@@ -22,7 +22,7 @@ class SettingsViewModel(
     val theme: StateFlow<PrismTheme> = settingsRepository.themeFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = PrismTheme.DEEP_TECH_BLUE
+        initialValue = PrismTheme.DYNAMIC
     )
 
     val gridColumns: StateFlow<Int> = settingsRepository.gridColumnsFlow.stateIn(

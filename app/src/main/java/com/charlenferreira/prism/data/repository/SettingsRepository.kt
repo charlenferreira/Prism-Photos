@@ -24,7 +24,7 @@ class SettingsRepository(private val context: Context) {
 
     val themeFlow: Flow<PrismTheme> = context.prismDataStore.data.map { preferences ->
         val rawName = preferences[Keys.THEME]
-        PrismTheme.entries.firstOrNull { it.name == rawName } ?: PrismTheme.DEEP_TECH_BLUE
+        PrismTheme.entries.firstOrNull { it.name == rawName } ?: PrismTheme.DYNAMIC
     }
 
     val gridColumnsFlow: Flow<Int> = context.prismDataStore.data.map { preferences ->

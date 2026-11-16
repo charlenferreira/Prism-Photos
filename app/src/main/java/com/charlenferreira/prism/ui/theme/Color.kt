@@ -12,6 +12,12 @@ enum class PrismTheme(
     val swatchPrimary: Color,
     val swatchSecondary: Color
 ) {
+    DYNAMIC(
+        displayName = "Dinâmico",
+        subtitle = "Cores do sistema",
+        swatchPrimary = Color(0xFF8AB4F8),
+        swatchSecondary = Color(0xFFA7F3D0)
+    ),
     LATTE(
         displayName = "Bege Latte",
         subtitle = "Creme suave & aveia",
@@ -29,12 +35,6 @@ enum class PrismTheme(
         subtitle = "#000000 absoluto",
         swatchPrimary = Color(0xFF000000),
         swatchSecondary = Color(0xFF23252B)
-    ),
-    DEEP_TECH_BLUE(
-        displayName = "Azul Deep Tech",
-        subtitle = "Céu pastel & cobalto",
-        swatchPrimary = Color(0xFF7CB9FF),
-        swatchSecondary = Color(0xFFBFE0FF)
     ),
     CRIMSON_RED(
         displayName = "Vermelho Crimson",
@@ -66,9 +66,84 @@ data class PrismExtendedColors(
     val isDarkSurface: Boolean
 )
 
+fun deriveDynamicExtendedColors(
+    scheme: ColorScheme,
+    darkTheme: Boolean
+): PrismExtendedColors {
+    return if (darkTheme) {
+        PrismExtendedColors(
+            backgroundTop = scheme.background,
+            backgroundBottom = scheme.surface,
+            ambientOrbPrimary = scheme.primary.copy(alpha = 0.18f),
+            ambientOrbSecondary = scheme.tertiary.copy(alpha = 0.14f),
+            glassFillTop = scheme.surfaceVariant.copy(alpha = 0.56f),
+            glassFillBottom = scheme.surface.copy(alpha = 0.44f),
+            glassBorderStart = scheme.onSurface.copy(alpha = 0.24f),
+            glassBorderMid = scheme.primary.copy(alpha = 0.16f),
+            glassBorderEnd = scheme.outline.copy(alpha = 0.34f),
+            rawBadgeContainer = scheme.primary.copy(alpha = 0.92f),
+            rawBadgeContent = scheme.onPrimary,
+            isDarkSurface = true
+        )
+    } else {
+        PrismExtendedColors(
+            backgroundTop = scheme.background,
+            backgroundBottom = scheme.surfaceVariant.copy(alpha = 0.55f),
+            ambientOrbPrimary = scheme.primaryContainer.copy(alpha = 0.52f),
+            ambientOrbSecondary = scheme.tertiaryContainer.copy(alpha = 0.44f),
+            glassFillTop = Color.White.copy(alpha = 0.84f),
+            glassFillBottom = scheme.surface.copy(alpha = 0.72f),
+            glassBorderStart = Color.White.copy(alpha = 0.96f),
+            glassBorderMid = scheme.primary.copy(alpha = 0.20f),
+            glassBorderEnd = scheme.outline.copy(alpha = 0.45f),
+            rawBadgeContainer = scheme.primary.copy(alpha = 0.92f),
+            rawBadgeContent = scheme.onPrimary,
+            isDarkSurface = false
+        )
+    }
+}
+
 fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
     return when (theme) {
-        // Always light warm beige pastel
+        // Fallback scheme for API 26-30 when system Dynamic Color is unavailable
+        PrismTheme.DYNAMIC -> if (darkTheme) {
+            darkColorScheme(
+                primary = Color(0xFFA8C7FA),
+                onPrimary = Color(0xFF062E6F),
+                primaryContainer = Color(0xFF0842A0),
+                onPrimaryContainer = Color(0xFFD3E3FD),
+                secondary = Color(0xFFC2E7FF),
+                onSecondary = Color(0xFF003355),
+                tertiary = Color(0xFFC4EED0),
+                tertiaryContainer = Color(0xFF0F5223),
+                background = Color(0xFF111318),
+                onBackground = Color(0xFFE3E2E6),
+                surface = Color(0xFF191C22),
+                onSurface = Color(0xFFE3E2E6),
+                surfaceVariant = Color(0xFF252932),
+                onSurfaceVariant = Color(0xFFC4C6D0),
+                outline = Color(0xFF44474F)
+            )
+        } else {
+            lightColorScheme(
+                primary = Color(0xFF4C7CE0),
+                onPrimary = Color(0xFFFFFFFF),
+                primaryContainer = Color(0xFFDCE7FF),
+                onPrimaryContainer = Color(0xFF0B2358),
+                secondary = Color(0xFF6285B8),
+                onSecondary = Color(0xFFFFFFFF),
+                tertiary = Color(0xFF3E8E6E),
+                tertiaryContainer = Color(0xFFD4F5E5),
+                background = Color(0xFFF6F8FC),
+                onBackground = Color(0xFF191C22),
+                surface = Color(0xFFFFFFFF),
+                onSurface = Color(0xFF191C22),
+                surfaceVariant = Color(0xFFE8EDF6),
+                onSurfaceVariant = Color(0xFF535B6B),
+                outline = Color(0xFFC8D0DE)
+            )
+        }
+
         PrismTheme.LATTE -> lightColorScheme(
             primary = Color(0xFF9C7251),
             onPrimary = Color(0xFFFFFFFF),
@@ -85,7 +160,6 @@ fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
             outline = Color(0xFFD5C1AA)
         )
 
-        // Always pure clean white pastel
         PrismTheme.CLEAN_WHITE -> lightColorScheme(
             primary = Color(0xFF6A85E6),
             onPrimary = Color(0xFFFFFFFF),
@@ -102,7 +176,6 @@ fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
             outline = Color(0xFFD9E1EE)
         )
 
-        // Always true pure #000000 AMOLED black
         PrismTheme.AMOLED_BLACK -> darkColorScheme(
             primary = Color(0xFFE6ECFF),
             onPrimary = Color(0xFF050608),
@@ -118,40 +191,6 @@ fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
             onSurfaceVariant = Color(0xFFA7ACB8),
             outline = Color(0xFF282A30)
         )
-
-        PrismTheme.DEEP_TECH_BLUE -> if (darkTheme) {
-            darkColorScheme(
-                primary = Color(0xFF8CCBFF),
-                onPrimary = Color(0xFF072138),
-                primaryContainer = Color(0xFF133352),
-                onPrimaryContainer = Color(0xFFDDF0FF),
-                secondary = Color(0xFFA9B9FF),
-                onSecondary = Color(0xFF121A3D),
-                background = Color(0xFF0A1626),
-                onBackground = Color(0xFFEDF5FF),
-                surface = Color(0xFF102036),
-                onSurface = Color(0xFFEDF5FF),
-                surfaceVariant = Color(0xFF182D49),
-                onSurfaceVariant = Color(0xFFAEC5DF),
-                outline = Color(0xFF2C486C)
-            )
-        } else {
-            lightColorScheme(
-                primary = Color(0xFF5895E8),
-                onPrimary = Color(0xFFFFFFFF),
-                primaryContainer = Color(0xFFDCEBFF),
-                onPrimaryContainer = Color(0xFF0D2847),
-                secondary = Color(0xFF84A9F5),
-                onSecondary = Color(0xFFFFFFFF),
-                background = Color(0xFFEEF5FF),
-                onBackground = Color(0xFF10233D),
-                surface = Color(0xFFF7FAFF),
-                onSurface = Color(0xFF10233D),
-                surfaceVariant = Color(0xFFE1EEFE),
-                onSurfaceVariant = Color(0xFF476282),
-                outline = Color(0xFFBBD4F2)
-            )
-        }
 
         PrismTheme.CRIMSON_RED -> if (darkTheme) {
             darkColorScheme(
@@ -187,7 +226,6 @@ fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
             )
         }
 
-        // Vivid luminous emerald green with pastel mint harmony
         PrismTheme.EMERALD_GREEN -> if (darkTheme) {
             darkColorScheme(
                 primary = Color(0xFF18E28A),
@@ -226,6 +264,11 @@ fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
 
 fun getExtendedColors(theme: PrismTheme, darkTheme: Boolean): PrismExtendedColors {
     return when (theme) {
+        PrismTheme.DYNAMIC -> deriveDynamicExtendedColors(
+            scheme = getColorScheme(PrismTheme.DYNAMIC, darkTheme),
+            darkTheme = darkTheme
+        )
+
         PrismTheme.LATTE -> PrismExtendedColors(
             backgroundTop = Color(0xFFF8F0E5),
             backgroundBottom = Color(0xFFEDE0CE),
@@ -261,8 +304,8 @@ fun getExtendedColors(theme: PrismTheme, darkTheme: Boolean): PrismExtendedColor
             backgroundBottom = Color(0xFF000000),
             ambientOrbPrimary = Color.Transparent,
             ambientOrbSecondary = Color.Transparent,
-            glassFillTop = Color(0x36202229),
-            glassFillBottom = Color(0x220E0F13),
+            glassFillTop = Color(0x46202229),
+            glassFillBottom = Color(0x340E0F13),
             glassBorderStart = Color(0x52FFFFFF),
             glassBorderMid = Color(0x1EFFFFFF),
             glassBorderEnd = Color(0x34A6B0C8),
@@ -271,46 +314,14 @@ fun getExtendedColors(theme: PrismTheme, darkTheme: Boolean): PrismExtendedColor
             isDarkSurface = true
         )
 
-        PrismTheme.DEEP_TECH_BLUE -> if (darkTheme) {
-            PrismExtendedColors(
-                backgroundTop = Color(0xFF0B1829),
-                backgroundBottom = Color(0xFF07101C),
-                ambientOrbPrimary = Color(0x3470B5FF),
-                ambientOrbSecondary = Color(0x289AB0FF),
-                glassFillTop = Color(0x381D3454),
-                glassFillBottom = Color(0x22102036),
-                glassBorderStart = Color(0x6CE0F1FF),
-                glassBorderMid = Color(0x268CCBFF),
-                glassBorderEnd = Color(0x489AB0FF),
-                rawBadgeContainer = Color(0xEB8CCBFF),
-                rawBadgeContent = Color(0xFF072138),
-                isDarkSurface = true
-            )
-        } else {
-            PrismExtendedColors(
-                backgroundTop = Color(0xFFF3F8FF),
-                backgroundBottom = Color(0xFFE3EEFE),
-                ambientOrbPrimary = Color(0x369AC8FF),
-                ambientOrbSecondary = Color(0x28B8C7FF),
-                glassFillTop = Color(0xD8FFFFFF),
-                glassFillBottom = Color(0xA4EAF3FF),
-                glassBorderStart = Color(0xF6FFFFFF),
-                glassBorderMid = Color(0x66B4D4FA),
-                glassBorderEnd = Color(0x908CB8F2),
-                rawBadgeContainer = Color(0xEB5895E8),
-                rawBadgeContent = Color(0xFFFFFFFF),
-                isDarkSurface = false
-            )
-        }
-
         PrismTheme.CRIMSON_RED -> if (darkTheme) {
             PrismExtendedColors(
                 backgroundTop = Color(0xFF200B11),
                 backgroundBottom = Color(0xFF13060A),
                 ambientOrbPrimary = Color(0x36FF85A1),
                 ambientOrbSecondary = Color(0x28FFB3A7),
-                glassFillTop = Color(0x3A451925),
-                glassFillBottom = Color(0x22240C13),
+                glassFillTop = Color(0x4A451925),
+                glassFillBottom = Color(0x34240C13),
                 glassBorderStart = Color(0x68FFE0E8),
                 glassBorderMid = Color(0x28FF96AA),
                 glassBorderEnd = Color(0x48FFB3A7),
@@ -341,8 +352,8 @@ fun getExtendedColors(theme: PrismTheme, darkTheme: Boolean): PrismExtendedColor
                 backgroundBottom = Color(0xFF03130C),
                 ambientOrbPrimary = Color(0x3C00E682),
                 ambientOrbSecondary = Color(0x2C5CFFC0),
-                glassFillTop = Color(0x3A11422D),
-                glassFillBottom = Color(0x24072417),
+                glassFillTop = Color(0x4A11422D),
+                glassFillBottom = Color(0x34072417),
                 glassBorderStart = Color(0x74C8FFE5),
                 glassBorderMid = Color(0x3018E28A),
                 glassBorderEnd = Color(0x5269F0AE),

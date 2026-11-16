@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Prism</string>
-    <string name="tab_gallery">Galeria</string>
+    <string name="tab_gallery">Álbuns</string>
     <string name="tab_settings">Ajustes</string>
     <string name="filter_raw">RAW</string>
     <string name="filter_menu_description">Filtrar mídias</string>
@@ -25,7 +25,11 @@
     <string name="action_edit">Editar</string>
     <string name="action_play_video">Reproduzir vídeo</string>
     <string name="chooser_edit_title">Editar com</string>
-    <string name="no_editor_available">Nenhum aplicativo editor de imagens encontrado.</string>
+    <string name="edit_popup_title">Editar foto</string>
+    <string name="edit_popup_subtitle">O editor nativo chegará em breve. Escolha um aplicativo instalado para editar por enquanto:</string>
+    <string name="edit_popup_system_chooser">Outros aplicativos</string>
+    <string name="edit_popup_cancel">Cancelar</string>
+    <string name="no_editor_available">Nenhum aplicativo editor de imagens encontrado no aparelho.</string>
     <string name="no_video_player_available">Nenhum reprodutor de vídeo encontrado.</string>
     <string name="exif_sheet_title">Inspetor EXIF</string>
     <string name="exif_model">Modelo</string>

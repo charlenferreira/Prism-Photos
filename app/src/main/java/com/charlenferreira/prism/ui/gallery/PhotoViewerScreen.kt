@@ -1,18 +1,24 @@
 package com.charlenferreira.prism.ui.gallery
 
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -24,17 +30,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
@@ -42,6 +53,7 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,8 +63,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
@@ -65,6 +80,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -74,6 +91,13 @@ import com.charlenferreira.prism.data.model.PhotoItem
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+
+private data class EditorAppCandidate(
+    val label: String,
+    val packageName: String,
+    val activityName: String,
+    val icon: ImageBitmap
+)
 
 @Composable
 fun PhotoViewerScreen(
@@ -98,6 +122,7 @@ fun PhotoViewerScreen(
     )
     var showChrome by remember { mutableStateOf(true) }
     var showExifSheet by remember { mutableStateOf(false) }
+    var showEditAppDialog by remember { mutableStateOf(false) }
     var isCurrentPageZoomed by remember { mutableStateOf(false) }
 
     val exifMetadata by viewModel.selectedExif.collectAsStateWithLifecycle()
@@ -136,11 +161,11 @@ fun PhotoViewerScreen(
         val viewerSpringFloat = spring<Float>(dampingRatio = 0.78f, stiffness = 480f)
         AnimatedVisibility(
             visible = showChrome,
-            enter = fadeIn(viewerSpringFloat) + androidx.compose.animation.scaleIn(
+            enter = fadeIn(viewerSpringFloat) + scaleIn(
                 initialScale = 0.94f,
                 animationSpec = viewerSpringFloat
             ),
-            exit = fadeOut(viewerSpringFloat) + androidx.compose.animation.scaleOut(
+            exit = fadeOut(viewerSpringFloat) + scaleOut(
                 targetScale = 0.94f,
                 animationSpec = viewerSpringFloat
             ),
@@ -220,11 +245,11 @@ fun PhotoViewerScreen(
         // Bottom floating Liquid Glass actions: EXIF + Edit
         AnimatedVisibility(
             visible = showChrome,
-            enter = fadeIn(viewerSpringFloat) + androidx.compose.animation.scaleIn(
+            enter = fadeIn(viewerSpringFloat) + scaleIn(
                 initialScale = 0.94f,
                 animationSpec = viewerSpringFloat
             ),
-            exit = fadeOut(viewerSpringFloat) + androidx.compose.animation.scaleOut(
+            exit = fadeOut(viewerSpringFloat) + scaleOut(
                 targetScale = 0.94f,
                 animationSpec = viewerSpringFloat
             ),
@@ -271,7 +296,7 @@ fun PhotoViewerScreen(
                         shape = CircleShape,
                         cornerRadiusDp = 28.dp,
                         tintOverride = Color(0xFF141824),
-                        onClick = { openExternalEditor(context, currentPhoto) },
+                        onClick = { showEditAppDialog = true },
                         modifier = Modifier.testTag("viewer_edit_button")
                     ) {
                         Row(
@@ -307,6 +332,162 @@ fun PhotoViewerScreen(
                 viewModel.clearExif()
             }
         )
+    }
+
+    if (showEditAppDialog) {
+        EditAppPickerDialog(
+            photo = currentPhoto,
+            onDismiss = { showEditAppDialog = false },
+            onSelectApp = { candidate ->
+                showEditAppDialog = false
+                launchSpecificEditor(context, currentPhoto, candidate)
+            },
+            onOpenSystemChooser = {
+                showEditAppDialog = false
+                openExternalEditorChooser(context, currentPhoto)
+            }
+        )
+    }
+}
+
+@Composable
+private fun EditAppPickerDialog(
+    photo: PhotoItem,
+    onDismiss: () -> Unit,
+    onSelectApp: (EditorAppCandidate) -> Unit,
+    onOpenSystemChooser: () -> Unit
+) {
+    val context = LocalContext.current
+    val editorApps = remember(photo.id, photo.mimeType) {
+        queryInstalledImageEditors(context, photo)
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        LiquidGlassSurface(
+            shape = RoundedCornerShape(28.dp),
+            cornerRadiusDp = 28.dp,
+            tintOverride = MaterialTheme.colorScheme.surface,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("edit_app_picker_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+                    .padding(20.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.edit_popup_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = stringResource(R.string.edit_popup_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (editorApps.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_editor_available),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                    ) {
+                        items(
+                            items = editorApps,
+                            key = { "${it.packageName}/${it.activityName}" }
+                        ) { app ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                                    .clickable { onSelectApp(app) }
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                                    .testTag("editor_app_${app.packageName}"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Image(
+                                        bitmap = app.icon,
+                                        contentDescription = app.label,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = app.label,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = onOpenSystemChooser,
+                        modifier = Modifier.testTag("edit_popup_chooser_button")
+                    ) {
+                        Text(text = stringResource(R.string.edit_popup_system_chooser))
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("edit_popup_cancel_button")
+                    ) {
+                        Text(text = stringResource(R.string.edit_popup_cancel))
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -462,7 +643,61 @@ private fun ZoomablePhotoPage(
     }
 }
 
-private fun openExternalEditor(context: Context, photo: PhotoItem) {
+private fun queryInstalledImageEditors(
+    context: Context,
+    photo: PhotoItem
+): List<EditorAppCandidate> {
+    val pm = context.packageManager
+    val mime = photo.mimeType.ifBlank { "image/*" }
+    val editIntent = Intent(Intent.ACTION_EDIT).apply {
+        setDataAndType(photo.uri, mime)
+    }
+
+    val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        pm.queryIntentActivities(
+            editIntent,
+            PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+        )
+    } else {
+        @Suppress("DEPRECATION")
+        pm.queryIntentActivities(editIntent, PackageManager.MATCH_DEFAULT_ONLY)
+    }
+
+    return resolved
+        .filter { it.activityInfo.packageName != context.packageName }
+        .distinctBy { "${it.activityInfo.packageName}/${it.activityInfo.name}" }
+        .mapNotNull { info ->
+            runCatching {
+                val label = info.loadLabel(pm).toString()
+                val iconBitmap = info.loadIcon(pm).toBitmap(width = 96, height = 96).asImageBitmap()
+                EditorAppCandidate(
+                    label = label,
+                    packageName = info.activityInfo.packageName,
+                    activityName = info.activityInfo.name,
+                    icon = iconBitmap
+                )
+            }.getOrNull()
+        }
+}
+
+private fun launchSpecificEditor(
+    context: Context,
+    photo: PhotoItem,
+    candidate: EditorAppCandidate
+) {
+    val editIntent = Intent(Intent.ACTION_EDIT).apply {
+        setDataAndType(photo.uri, photo.mimeType.ifBlank { "image/*" })
+        component = ComponentName(candidate.packageName, candidate.activityName)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(editIntent)
+    } catch (_: ActivityNotFoundException) {
+        openExternalEditorChooser(context, photo)
+    }
+}
+
+private fun openExternalEditorChooser(context: Context, photo: PhotoItem) {
     val editIntent = Intent(Intent.ACTION_EDIT).apply {
         setDataAndType(photo.uri, photo.mimeType.ifBlank { "image/*" })
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)

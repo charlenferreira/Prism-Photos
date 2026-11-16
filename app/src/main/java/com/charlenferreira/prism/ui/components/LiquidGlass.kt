@@ -1,21 +1,12 @@
 package com.charlenferreira.prism.ui.components
 
-import android.graphics.Paint
 import android.graphics.RenderEffect
-import android.graphics.RenderNode
 import android.graphics.Shader
 import android.os.Build
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +19,7 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -53,7 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -61,9 +52,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -73,9 +61,12 @@ import androidx.compose.ui.unit.dp
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
 
+/**
+ * Lightweight GPU-accelerated Liquid Glass modifier.
+ * Avoids per-frame RenderNode re-recording so press, scroll, and tab animations stay at 120fps.
+ */
 fun Modifier.liquidGlass(
     shape: Shape = RoundedCornerShape(26.dp),
-    blurRadius: Float = 24f,
     isPressed: Boolean = false,
     borderWidth: Dp = 1.dp,
     tintOverride: Color? = null,
@@ -83,91 +74,61 @@ fun Modifier.liquidGlass(
 ): Modifier = composed {
     val prismColors = LocalPrismColors.current
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
+        targetValue = if (isPressed) 0.94f else 1f,
         animationSpec = spring(
             dampingRatio = 0.72f,
-            stiffness = 420f
+            stiffness = 620f
         ),
         label = "liquidGlassPressScale"
     )
 
     val topColor by animateColorAsState(
-        targetValue = tintOverride?.copy(alpha = 0.30f) ?: prismColors.glassFillTop,
-        animationSpec = tween(260),
+        targetValue = tintOverride?.copy(alpha = 0.34f) ?: prismColors.glassFillTop,
+        animationSpec = tween(180),
         label = "liquidGlassTopTint"
     )
     val bottomColor by animateColorAsState(
-        targetValue = tintOverride?.copy(alpha = 0.16f) ?: prismColors.glassFillBottom,
-        animationSpec = tween(260),
+        targetValue = tintOverride?.copy(alpha = 0.20f) ?: prismColors.glassFillBottom,
+        animationSpec = tween(180),
         label = "liquidGlassBottomTint"
     )
 
-    val specularBrush = Brush.linearGradient(
-        colors = listOf(
-            prismColors.glassBorderStart,
-            prismColors.glassBorderMid,
-            prismColors.glassBorderEnd
-        ),
-        start = Offset.Zero,
-        end = Offset(600f, 600f)
-    )
-    val glassRenderNode = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) RenderNode("PrismLiquidGlass") else null
+    val specularBrush = remember(
+        prismColors.glassBorderStart,
+        prismColors.glassBorderMid,
+        prismColors.glassBorderEnd
+    ) {
+        Brush.linearGradient(
+            colors = listOf(
+                prismColors.glassBorderStart,
+                prismColors.glassBorderMid,
+                prismColors.glassBorderEnd
+            ),
+            start = Offset.Zero,
+            end = Offset(520f, 520f)
+        )
     }
+
+    val topHighlight = if (prismColors.isDarkSurface) 0.12f else 0.36f
 
     this
         .graphicsLayer {
             scaleX = scale
             scaleY = scale
         }
-        .shadow(
-            elevation = if (prismColors.isDarkSurface) 10.dp else 8.dp,
-            shape = shape,
-            ambientColor = Color.Black.copy(alpha = if (prismColors.isDarkSurface) 0.45f else 0.10f),
-            spotColor = Color.Black.copy(alpha = if (prismColors.isDarkSurface) 0.50f else 0.12f)
-        )
         .clip(shape)
         .drawBehind {
             val radiusPx = cornerRadiusDp.toPx().coerceAtMost(size.minDimension / 2f)
-            val nativeCanvas = drawContext.canvas.nativeCanvas
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                glassRenderNode != null &&
-                nativeCanvas.isHardwareAccelerated &&
-                size.width > 0f &&
-                size.height > 0f
-            ) {
-                val w = size.width.toInt().coerceAtLeast(1)
-                val h = size.height.toInt().coerceAtLeast(1)
-                glassRenderNode.setPosition(0, 0, w, h)
-                glassRenderNode.setRenderEffect(
-                    RenderEffect.createBlurEffect(
-                        blurRadius,
-                        blurRadius,
-                        Shader.TileMode.CLAMP
-                    )
-                )
-                val rec = glassRenderNode.beginRecording(w, h)
-                val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = topColor.toArgb()
-                }
-                rec.drawRoundRect(0f, 0f, size.width, size.height, radiusPx, radiusPx, paint)
-                glassRenderNode.endRecording()
-                nativeCanvas.drawRenderNode(glassRenderNode)
-            }
-
-            // Smooth uniform frosted glass gradient without localized blotches
             drawRoundRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(topColor, bottomColor)
                 ),
                 cornerRadius = CornerRadius(radiusPx, radiusPx)
             )
-
-            // Subtle upper specular rim sheen
             drawRoundRect(
                 brush = Brush.verticalGradient(
-                    0.0f to Color.White.copy(alpha = if (prismColors.isDarkSurface) 0.10f else 0.34f),
-                    0.35f to Color.Transparent,
+                    0.0f to Color.White.copy(alpha = topHighlight),
+                    0.32f to Color.Transparent,
                     1.0f to Color.Transparent
                 ),
                 cornerRadius = CornerRadius(radiusPx, radiusPx)
@@ -176,17 +137,29 @@ fun Modifier.liquidGlass(
         .border(width = borderWidth, brush = specularBrush, shape = shape)
 }
 
+/**
+ * Applies hardware RenderEffect blur on API 31+ for static/top scrim layers with gradient fallback.
+ */
+fun Modifier.liquidGlassBlurLayer(radius: Float = 24f): Modifier = graphicsLayer {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        renderEffect = RenderEffect.createBlurEffect(
+            radius,
+            radius,
+            Shader.TileMode.CLAMP
+        ).asComposeRenderEffect()
+    }
+}
+
 @Composable
 fun LiquidGlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(24.dp),
     cornerRadiusDp: Dp = 24.dp,
-    blurRadius: Float = 24f,
+    @Suppress("UNUSED_PARAMETER") blurRadius: Float = 24f,
     tintOverride: Color? = null,
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val prismColors = LocalPrismColors.current
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
 
@@ -206,36 +179,12 @@ fun LiquidGlassSurface(
             .then(clickModifier)
             .liquidGlass(
                 shape = shape,
-                blurRadius = blurRadius,
                 isPressed = isPressed,
                 tintOverride = tintOverride,
                 cornerRadiusDp = cornerRadiusDp
-            )
-    ) {
-        // Uniform blurred glass backing on API 31+ (no clipped circles that cause diagonal seams)
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .graphicsLayer {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        renderEffect = RenderEffect.createBlurEffect(
-                            blurRadius,
-                            blurRadius,
-                            Shader.TileMode.CLAMP
-                        ).asComposeRenderEffect()
-                    }
-                }
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            prismColors.glassFillTop.copy(alpha = 0.25f),
-                            prismColors.glassFillBottom.copy(alpha = 0.15f)
-                        )
-                    )
-                )
-        )
-        content()
-    }
+            ),
+        content = content
+    )
 }
 
 @Composable
@@ -246,22 +195,22 @@ fun LiquidGlassBackground(
     val prismColors = LocalPrismColors.current
     val bgTop by animateColorAsState(
         targetValue = prismColors.backgroundTop,
-        animationSpec = tween(360),
+        animationSpec = tween(260),
         label = "bgTop"
     )
     val bgBottom by animateColorAsState(
         targetValue = prismColors.backgroundBottom,
-        animationSpec = tween(360),
+        animationSpec = tween(260),
         label = "bgBottom"
     )
     val orbPrimary by animateColorAsState(
         targetValue = prismColors.ambientOrbPrimary,
-        animationSpec = tween(360),
+        animationSpec = tween(260),
         label = "orbPrimary"
     )
     val orbSecondary by animateColorAsState(
         targetValue = prismColors.ambientOrbSecondary,
-        animationSpec = tween(360),
+        animationSpec = tween(260),
         label = "orbSecondary"
     )
 
@@ -299,6 +248,11 @@ fun LiquidGlassBackground(
     }
 }
 
+/**
+ * Detached Liquid Glass bottom bar:
+ * - Left: floating Album/Gallery pill capsule
+ * - Right: standalone separate circular Settings button
+ */
 @Composable
 fun LiquidGlassPillNavBar(
     isGallerySelected: Boolean,
@@ -306,178 +260,127 @@ fun LiquidGlassPillNavBar(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        LiquidGlassSurface(
-            shape = CircleShape,
-            cornerRadiusDp = 34.dp,
-            blurRadius = 30f,
-            modifier = Modifier
-                .height(64.dp)
-                .animateContentSize(
-                    animationSpec = spring(
-                        dampingRatio = 0.78f,
-                        stiffness = 340f
-                    )
-                )
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ExpandableGlassTab(
-                    selected = isGallerySelected,
-                    label = stringResource(R.string.tab_gallery),
-                    selectedIcon = Icons.Rounded.PhotoLibrary,
-                    unselectedIcon = Icons.Outlined.PhotoLibrary,
-                    testTag = "nav_gallery_tab",
-                    onClick = onGalleryClick
-                )
-                ExpandableGlassTab(
-                    selected = !isGallerySelected,
-                    label = stringResource(R.string.tab_settings),
-                    selectedIcon = Icons.Rounded.Settings,
-                    unselectedIcon = Icons.Outlined.Settings,
-                    testTag = "nav_settings_tab",
-                    onClick = onSettingsClick
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExpandableGlassTab(
-    selected: Boolean,
-    label: String,
-    selectedIcon: ImageVector,
-    unselectedIcon: ImageVector,
-    testTag: String,
-    onClick: () -> Unit
-) {
     val prismColors = LocalPrismColors.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
+    val galleryLabel = stringResource(R.string.tab_gallery)
+    val settingsLabel = stringResource(R.string.tab_settings)
 
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.92f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.68f,
-            stiffness = 460f
-        ),
-        label = "tabPressScale"
+    val galleryScale by animateFloatAsState(
+        targetValue = if (isGallerySelected) 1f else 0.95f,
+        animationSpec = spring(dampingRatio = 0.74f, stiffness = 540f),
+        label = "galleryPillScale"
     )
-    val horizontalPadding by animateDpAsState(
-        targetValue = if (selected) 20.dp else 12.dp,
-        animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 340f
-        ),
-        label = "tabHorizontalPadding"
+    val settingsScale by animateFloatAsState(
+        targetValue = if (!isGallerySelected) 1.04f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 540f),
+        label = "settingsOrbScale"
     )
-    val capsuleFill by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(
-                alpha = if (prismColors.isDarkSurface) 0.24f else 0.16f
-            )
-        } else {
-            Color.Transparent
-        },
-        animationSpec = tween(240),
-        label = "tabCapsuleFill"
-    )
-    val capsuleStroke by animateColorAsState(
-        targetValue = if (selected) {
-            MaterialTheme.colorScheme.primary.copy(
-                alpha = if (prismColors.isDarkSurface) 0.45f else 0.32f
-            )
-        } else {
-            Color.Transparent
-        },
-        animationSpec = tween(240),
-        label = "tabCapsuleStroke"
-    )
-    val contentTint by animateColorAsState(
-        targetValue = if (selected) {
+
+    val galleryTint by animateColorAsState(
+        targetValue = if (isGallerySelected) {
             MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = tween(220),
-        label = "tabContentTint"
+        animationSpec = tween(150),
+        label = "galleryTint"
+    )
+    val settingsTint by animateColorAsState(
+        targetValue = if (!isGallerySelected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
+        animationSpec = tween(150),
+        label = "settingsTint"
     )
 
-    Box(
-        modifier = Modifier
-            .testTag(testTag)
-            .height(48.dp)
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
-            .clip(CircleShape)
-            .background(capsuleFill)
-            .border(width = 1.dp, color = capsuleStroke, shape = CircleShape)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                role = Role.Tab,
-                onClick = onClick
-            )
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = 0.78f,
-                    stiffness = 340f
-                )
-            )
-            .padding(horizontal = horizontalPadding),
-        contentAlignment = Alignment.Center
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = 24.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = if (selected) selectedIcon else unselectedIcon,
-                contentDescription = label,
-                tint = contentTint,
-                modifier = Modifier.size(22.dp)
-            )
-            AnimatedVisibility(
-                visible = selected,
-                enter = fadeIn(animationSpec = tween(200, delayMillis = 40)) +
-                    expandHorizontally(
-                        animationSpec = spring(
-                            dampingRatio = 0.78f,
-                            stiffness = 340f
-                        ),
-                        expandFrom = Alignment.Start
-                    ),
-                exit = fadeOut(animationSpec = tween(140)) +
-                    shrinkHorizontally(
-                        animationSpec = spring(
-                            dampingRatio = 0.82f,
-                            stiffness = 380f
-                        ),
-                        shrinkTowards = Alignment.Start
-                    )
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = label,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = contentTint,
-                        maxLines = 1
-                    )
+        // Left: Album / Gallery floating pill
+        LiquidGlassSurface(
+            shape = CircleShape,
+            cornerRadiusDp = 30.dp,
+            tintOverride = if (isGallerySelected) {
+                MaterialTheme.colorScheme.primary.copy(
+                    alpha = if (prismColors.isDarkSurface) 0.55f else 0.40f
+                )
+            } else {
+                null
+            },
+            onClick = onGalleryClick,
+            modifier = Modifier
+                .height(54.dp)
+                .graphicsLayer {
+                    scaleX = galleryScale
+                    scaleY = galleryScale
                 }
+                .testTag("nav_gallery_tab")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = if (isGallerySelected) {
+                        Icons.Rounded.PhotoLibrary
+                    } else {
+                        Icons.Outlined.PhotoLibrary
+                    },
+                    contentDescription = galleryLabel,
+                    tint = galleryTint,
+                    modifier = Modifier.size(21.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = galleryLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = galleryTint,
+                    maxLines = 1
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        // Right: Separate standalone circular Settings button
+        LiquidGlassSurface(
+            shape = CircleShape,
+            cornerRadiusDp = 28.dp,
+            tintOverride = if (!isGallerySelected) {
+                MaterialTheme.colorScheme.primary.copy(
+                    alpha = if (prismColors.isDarkSurface) 0.65f else 0.45f
+                )
+            } else {
+                null
+            },
+            onClick = onSettingsClick,
+            modifier = Modifier
+                .size(54.dp)
+                .graphicsLayer {
+                    scaleX = settingsScale
+                    scaleY = settingsScale
+                }
+                .testTag("nav_settings_tab")
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (!isGallerySelected) {
+                        Icons.Rounded.Settings
+                    } else {
+                        Icons.Outlined.Settings
+                    },
+                    contentDescription = settingsLabel,
+                    tint = settingsTint,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

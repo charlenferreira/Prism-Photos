@@ -12,7 +12,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.IntOffset
@@ -51,15 +55,21 @@ fun PrismNavGraph(
     val currentDestination = backStackEntry?.destination
 
     val isViewerRoute = currentDestination?.hasRoute<ViewerRoute>() == true
-    val isGallerySelected = currentDestination?.hasRoute<SettingsRoute>() != true
+    val routeIsGallery = currentDestination?.hasRoute<SettingsRoute>() != true
 
-    val fluidSpringFloat = spring<Float>(
+    // Optimistic selection updates on frame 0 of tap without waiting for NavController backstack emit
+    var optimisticGallerySelected by remember { mutableStateOf(true) }
+    LaunchedEffect(routeIsGallery) {
+        optimisticGallerySelected = routeIsGallery
+    }
+
+    val fastSpringFloat = spring<Float>(
         dampingRatio = 0.84f,
-        stiffness = 320f
+        stiffness = 500f
     )
-    val fluidSpringOffset = spring<IntOffset>(
-        dampingRatio = 0.80f,
-        stiffness = 340f
+    val fastSpringOffset = spring<IntOffset>(
+        dampingRatio = 0.82f,
+        stiffness = 480f
     )
 
     LiquidGlassBackground(modifier = Modifier.fillMaxSize()) {
@@ -68,20 +78,18 @@ fun PrismNavGraph(
                 navController = navController,
                 startDestination = GalleryRoute,
                 enterTransition = {
-                    fadeIn(animationSpec = tween(240)) +
-                        scaleIn(initialScale = 0.96f, animationSpec = fluidSpringFloat)
+                    fadeIn(animationSpec = tween(160)) +
+                        scaleIn(initialScale = 0.97f, animationSpec = fastSpringFloat)
                 },
                 exitTransition = {
-                    fadeOut(animationSpec = tween(180)) +
-                        scaleOut(targetScale = 0.98f, animationSpec = fluidSpringFloat)
+                    fadeOut(animationSpec = tween(120))
                 },
                 popEnterTransition = {
-                    fadeIn(animationSpec = tween(240)) +
-                        scaleIn(initialScale = 0.98f, animationSpec = fluidSpringFloat)
+                    fadeIn(animationSpec = tween(160))
                 },
                 popExitTransition = {
-                    fadeOut(animationSpec = tween(180)) +
-                        scaleOut(targetScale = 0.96f, animationSpec = fluidSpringFloat)
+                    fadeOut(animationSpec = tween(120)) +
+                        scaleOut(targetScale = 0.97f, animationSpec = fastSpringFloat)
                 },
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -100,18 +108,18 @@ fun PrismNavGraph(
 
                 composable<ViewerRoute>(
                     enterTransition = {
-                        fadeIn(animationSpec = tween(220)) +
-                            scaleIn(initialScale = 0.90f, animationSpec = fluidSpringFloat)
+                        fadeIn(animationSpec = tween(180)) +
+                            scaleIn(initialScale = 0.92f, animationSpec = fastSpringFloat)
                     },
                     exitTransition = {
-                        fadeOut(animationSpec = tween(180))
+                        fadeOut(animationSpec = tween(140))
                     },
                     popEnterTransition = {
-                        fadeIn(animationSpec = tween(220))
+                        fadeIn(animationSpec = tween(180))
                     },
                     popExitTransition = {
-                        fadeOut(animationSpec = tween(180)) +
-                            scaleOut(targetScale = 0.90f, animationSpec = fluidSpringFloat)
+                        fadeOut(animationSpec = tween(140)) +
+                            scaleOut(targetScale = 0.92f, animationSpec = fastSpringFloat)
                     }
                 ) { entry ->
                     val route = entry.toRoute<ViewerRoute>()
@@ -126,28 +134,34 @@ fun PrismNavGraph(
 
             AnimatedVisibility(
                 visible = !isViewerRoute,
-                enter = fadeIn(tween(220)) + slideInVertically(fluidSpringOffset) { it },
-                exit = fadeOut(tween(180)) + slideOutVertically(fluidSpringOffset) { it },
+                enter = fadeIn(tween(160)) + slideInVertically(fastSpringOffset) { it },
+                exit = fadeOut(tween(130)) + slideOutVertically(fastSpringOffset) { it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 LiquidGlassPillNavBar(
-                    isGallerySelected = isGallerySelected,
+                    isGallerySelected = optimisticGallerySelected,
                     onGalleryClick = {
-                        navController.navigate(GalleryRoute) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+                        if (!optimisticGallerySelected) {
+                            optimisticGallerySelected = true
+                            navController.navigate(GalleryRoute) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                            launchSingleTop = true
-                            restoreState = true
                         }
                     },
                     onSettingsClick = {
-                        navController.navigate(SettingsRoute) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
+                        if (optimisticGallerySelected) {
+                            optimisticGallerySelected = false
+                            navController.navigate(SettingsRoute) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
-                            launchSingleTop = true
-                            restoreState = true
                         }
                     }
                 )

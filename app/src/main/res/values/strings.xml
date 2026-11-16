@@ -6,6 +6,8 @@
     <string name="filter_menu_description">Filtrar mídias</string>
     <string name="filter_all_media">Todas as mídias</string>
     <string name="filter_raw_only">Somente RAW / DNG</string>
+    <string name="grid_density_toggle_compact">Alternar para grade compacta</string>
+    <string name="grid_density_toggle_comfortable">Alternar para grade confortável</string>
     <string name="permission_title">Acesso à sua galeria</string>
     <string name="permission_description">Conceda acesso às fotos e vídeos locais para navegar na grade, visualizar detalhes EXIF e filtrar arquivos RAW/DNG.</string>
     <string name="permission_grant">Conceder acesso</string>

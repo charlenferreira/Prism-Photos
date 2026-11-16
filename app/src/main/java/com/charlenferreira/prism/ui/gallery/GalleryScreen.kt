@@ -9,7 +9,9 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -18,6 +20,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,10 +52,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BrokenImage
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.ViewComfy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -79,6 +84,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -144,6 +151,7 @@ fun GalleryScreen(
                 uiState = uiState,
                 rawFilterActive = rawFilterActive,
                 gridColumns = gridColumns,
+                onToggleDensity = { viewModel.toggleGridDensity() },
                 onFilterIconClick = { isFilterMenuExpanded = !isFilterMenuExpanded }
             )
 
@@ -301,8 +309,10 @@ private fun GalleryTopBar(
     uiState: GalleryUiState,
     rawFilterActive: Boolean,
     gridColumns: Int,
+    onToggleDensity: () -> Unit,
     onFilterIconClick: () -> Unit
 ) {
+    val isCompactDensity = gridColumns >= 4
     val counterText = when (uiState) {
         is GalleryUiState.Success -> {
             val prefix = if (rawFilterActive) "RAW • " else ""
@@ -327,46 +337,101 @@ private fun GalleryTopBar(
             cornerRadiusDp = 20.dp,
             blurRadius = 22f
         ) {
-            Text(
-                text = counterText,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-            )
+            AnimatedContent(
+                targetState = counterText,
+                transitionSpec = {
+                    fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                },
+                label = "counterPillTransition"
+            ) { text ->
+                Text(
+                    text = text,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                )
+            }
         }
 
-        // Small compact corner filter icon button
-        LiquidGlassSurface(
-            shape = CircleShape,
-            cornerRadiusDp = 24.dp,
-            blurRadius = 24f,
-            tintOverride = if (rawFilterActive) MaterialTheme.colorScheme.primary else null,
-            onClick = onFilterIconClick,
-            modifier = Modifier
-                .size(48.dp)
-                .testTag("raw_filter_button")
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Rounded.Tune,
-                    contentDescription = stringResource(R.string.filter_menu_description),
-                    tint = if (rawFilterActive) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                    modifier = Modifier.size(20.dp)
-                )
-                if (rawFilterActive) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(10.dp)
-                            .size(7.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
+            // Floating action button to toggle compact vs comfortable grid density
+            LiquidGlassSurface(
+                shape = CircleShape,
+                cornerRadiusDp = 24.dp,
+                blurRadius = 24f,
+                tintOverride = if (isCompactDensity) MaterialTheme.colorScheme.primary else null,
+                onClick = onToggleDensity,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("grid_density_fab")
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    AnimatedContent(
+                        targetState = isCompactDensity,
+                        transitionSpec = {
+                            (fadeIn(tween(200)) + scaleIn(
+                                initialScale = 0.72f,
+                                animationSpec = spring(dampingRatio = 0.74f, stiffness = 360f)
+                            )) togetherWith (fadeOut(tween(140)) + scaleOut(targetScale = 0.72f))
+                        },
+                        label = "densityFabIconTransition"
+                    ) { compact ->
+                        Icon(
+                            imageVector = if (compact) Icons.Rounded.GridView else Icons.Rounded.ViewComfy,
+                            contentDescription = stringResource(
+                                if (compact) {
+                                    R.string.grid_density_toggle_comfortable
+                                } else {
+                                    R.string.grid_density_toggle_compact
+                                }
+                            ),
+                            tint = if (compact) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            // Small compact corner filter icon button
+            LiquidGlassSurface(
+                shape = CircleShape,
+                cornerRadiusDp = 24.dp,
+                blurRadius = 24f,
+                tintOverride = if (rawFilterActive) MaterialTheme.colorScheme.primary else null,
+                onClick = onFilterIconClick,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("raw_filter_button")
+            ) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = stringResource(R.string.filter_menu_description),
+                        tint = if (rawFilterActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.size(20.dp)
                     )
+                    if (rawFilterActive) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(10.dp)
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
                 }
             }
         }
@@ -464,16 +529,37 @@ private fun PinchablePhotoGrid(
         currentColumnsState = gridColumns
     }
 
+    val targetSpacing = when {
+        gridColumns <= 3 -> 8.dp
+        gridColumns == 4 -> 5.dp
+        else -> 3.dp
+    }
+    val targetCornerRadius = when {
+        gridColumns <= 3 -> 16.dp
+        gridColumns == 4 -> 12.dp
+        else -> 8.dp
+    }
+    val animatedSpacing by animateDpAsState(
+        targetValue = targetSpacing,
+        animationSpec = spring(dampingRatio = 0.80f, stiffness = 340f),
+        label = "gridSpacingAnim"
+    )
+    val animatedCornerRadius by animateDpAsState(
+        targetValue = targetCornerRadius,
+        animationSpec = spring(dampingRatio = 0.80f, stiffness = 340f),
+        label = "gridCornerAnim"
+    )
+
     LazyVerticalGrid(
         columns = GridCells.Fixed(gridColumns),
         contentPadding = PaddingValues(
-            start = 8.dp,
-            end = 8.dp,
+            start = 10.dp,
+            end = 10.dp,
             top = 4.dp,
             bottom = 112.dp
         ),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(animatedSpacing),
+        verticalArrangement = Arrangement.spacedBy(animatedSpacing),
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars)
@@ -521,7 +607,16 @@ private fun PinchablePhotoGrid(
         ) { photo ->
             PhotoGridTile(
                 photo = photo,
-                onClick = { onPhotoClick(photo.id) }
+                cornerRadius = animatedCornerRadius,
+                onClick = { onPhotoClick(photo.id) },
+                modifier = Modifier.animateItem(
+                    fadeInSpec = tween(220),
+                    fadeOutSpec = tween(160),
+                    placementSpec = spring<IntOffset>(
+                        dampingRatio = 0.80f,
+                        stiffness = 340f
+                    )
+                )
             )
         }
     }
@@ -530,14 +625,16 @@ private fun PinchablePhotoGrid(
 @Composable
 private fun PhotoGridTile(
     photo: PhotoItem,
-    onClick: () -> Unit
+    cornerRadius: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val prismColors = LocalPrismColors.current
-    val tileShape = RoundedCornerShape(12.dp)
+    val tileShape = RoundedCornerShape(cornerRadius)
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
             .clip(tileShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))

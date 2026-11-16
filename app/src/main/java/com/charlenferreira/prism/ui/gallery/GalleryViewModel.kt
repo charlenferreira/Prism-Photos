@@ -165,6 +165,15 @@ class GalleryViewModel(
         }
     }
 
+    fun toggleGridDensity() {
+        val nextColumns = if (gridColumns.value <= SettingsRepository.DEFAULT_GRID_COLUMNS) {
+            SettingsRepository.MAX_COLUMNS
+        } else {
+            SettingsRepository.DEFAULT_GRID_COLUMNS
+        }
+        setGridColumns(nextColumns)
+    }
+
     fun findPhotoIndex(photoId: Long): Int {
         val currentList = when (val state = uiState.value) {
             is GalleryUiState.Success -> state.photos

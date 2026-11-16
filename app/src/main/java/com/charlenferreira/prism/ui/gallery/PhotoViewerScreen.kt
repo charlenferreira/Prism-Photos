@@ -133,10 +133,17 @@ fun PhotoViewerScreen(
         }
 
         // Top floating Liquid Glass bar (Close + filename/RAW badge)
+        val viewerSpringFloat = spring<Float>(dampingRatio = 0.78f, stiffness = 480f)
         AnimatedVisibility(
             visible = showChrome,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(viewerSpringFloat) + androidx.compose.animation.scaleIn(
+                initialScale = 0.94f,
+                animationSpec = viewerSpringFloat
+            ),
+            exit = fadeOut(viewerSpringFloat) + androidx.compose.animation.scaleOut(
+                targetScale = 0.94f,
+                animationSpec = viewerSpringFloat
+            ),
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -213,8 +220,14 @@ fun PhotoViewerScreen(
         // Bottom floating Liquid Glass actions: EXIF + Edit
         AnimatedVisibility(
             visible = showChrome,
-            enter = fadeIn(),
-            exit = fadeOut(),
+            enter = fadeIn(viewerSpringFloat) + androidx.compose.animation.scaleIn(
+                initialScale = 0.94f,
+                animationSpec = viewerSpringFloat
+            ),
+            exit = fadeOut(viewerSpringFloat) + androidx.compose.animation.scaleOut(
+                targetScale = 0.94f,
+                animationSpec = viewerSpringFloat
+            ),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)

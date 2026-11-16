@@ -6,7 +6,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,13 +54,13 @@ fun PrismNavGraph(
     val isViewerRoute = currentDestination?.hasRoute<ViewerRoute>() == true
     val isGallerySelected = currentDestination?.hasRoute<SettingsRoute>() != true
 
-    val springFloatSpec = spring<Float>(
-        dampingRatio = 0.6f,
-        stiffness = 800f
+    val iosSpringFloat = spring<Float>(
+        dampingRatio = 0.78f,
+        stiffness = 460f
     )
-    val springOffsetSpec = spring<IntOffset>(
-        dampingRatio = 0.6f,
-        stiffness = 800f
+    val iosSpringOffset = spring<IntOffset>(
+        dampingRatio = 0.78f,
+        stiffness = 460f
     )
 
     LiquidGlassBackground(modifier = Modifier.fillMaxSize()) {
@@ -67,20 +69,20 @@ fun PrismNavGraph(
                 navController = navController,
                 startDestination = GalleryRoute,
                 enterTransition = {
-                    fadeIn(animationSpec = springFloatSpec) +
-                        scaleIn(initialScale = 0.94f, animationSpec = springFloatSpec)
+                    fadeIn(animationSpec = iosSpringFloat) +
+                        slideInHorizontally(animationSpec = iosSpringOffset) { it / 12 }
                 },
                 exitTransition = {
-                    fadeOut(animationSpec = springFloatSpec) +
-                        scaleOut(targetScale = 0.96f, animationSpec = springFloatSpec)
+                    fadeOut(animationSpec = iosSpringFloat) +
+                        slideOutHorizontally(animationSpec = iosSpringOffset) { -it / 16 }
                 },
                 popEnterTransition = {
-                    fadeIn(animationSpec = springFloatSpec) +
-                        scaleIn(initialScale = 0.96f, animationSpec = springFloatSpec)
+                    fadeIn(animationSpec = iosSpringFloat) +
+                        slideInHorizontally(animationSpec = iosSpringOffset) { -it / 16 }
                 },
                 popExitTransition = {
-                    fadeOut(animationSpec = springFloatSpec) +
-                        scaleOut(targetScale = 0.94f, animationSpec = springFloatSpec)
+                    fadeOut(animationSpec = iosSpringFloat) +
+                        slideOutHorizontally(animationSpec = iosSpringOffset) { it / 12 }
                 },
                 modifier = Modifier.fillMaxSize()
             ) {
@@ -99,18 +101,18 @@ fun PrismNavGraph(
 
                 composable<ViewerRoute>(
                     enterTransition = {
-                        fadeIn(animationSpec = springFloatSpec) +
-                            scaleIn(initialScale = 0.88f, animationSpec = springFloatSpec)
+                        fadeIn(animationSpec = iosSpringFloat) +
+                            scaleIn(initialScale = 0.86f, animationSpec = iosSpringFloat)
                     },
                     exitTransition = {
-                        fadeOut(animationSpec = springFloatSpec)
+                        fadeOut(animationSpec = iosSpringFloat)
                     },
                     popEnterTransition = {
-                        fadeIn(animationSpec = springFloatSpec)
+                        fadeIn(animationSpec = iosSpringFloat)
                     },
                     popExitTransition = {
-                        fadeOut(animationSpec = springFloatSpec) +
-                            scaleOut(targetScale = 0.88f, animationSpec = springFloatSpec)
+                        fadeOut(animationSpec = iosSpringFloat) +
+                            scaleOut(targetScale = 0.86f, animationSpec = iosSpringFloat)
                     }
                 ) { entry ->
                     val route = entry.toRoute<ViewerRoute>()
@@ -125,8 +127,8 @@ fun PrismNavGraph(
 
             AnimatedVisibility(
                 visible = !isViewerRoute,
-                enter = fadeIn(springFloatSpec) + slideInVertically(springOffsetSpec) { it },
-                exit = fadeOut(springFloatSpec) + slideOutVertically(springOffsetSpec) { it },
+                enter = fadeIn(iosSpringFloat) + slideInVertically(iosSpringOffset) { it },
+                exit = fadeOut(iosSpringFloat) + slideOutVertically(iosSpringOffset) { it },
                 modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 LiquidGlassPillNavBar(

@@ -1,10 +1,13 @@
 package com.charlenferreira.prism.ui.settings
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +56,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.charlenferreira.prism.BuildConfig
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
+import com.charlenferreira.prism.ui.theme.LocalPrismColors
 import com.charlenferreira.prism.ui.theme.PrismTheme
 
 @Composable
@@ -83,7 +88,6 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             )
         }
 
-        // Theme selector section (6 themes)
         item {
             LiquidGlassSurface(
                 shape = RoundedCornerShape(26.dp),
@@ -130,7 +134,6 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             }
         }
 
-        // Grid columns section (3 / 4 / 5)
         item {
             LiquidGlassSurface(
                 shape = RoundedCornerShape(26.dp),
@@ -166,8 +169,17 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                             val isSelected = gridColumns == count
                             val scale by animateFloatAsState(
                                 targetValue = if (isSelected) 1f else 0.96f,
-                                animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
+                                animationSpec = spring(dampingRatio = 0.65f, stiffness = 550f),
                                 label = "gridChipSpring"
+                            )
+                            val bgColor by animateColorAsState(
+                                targetValue = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                                },
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+                                label = "gridChipBg"
                             )
                             Box(
                                 modifier = Modifier
@@ -178,19 +190,13 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                                         scaleY = scale
                                     }
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(
-                                        if (isSelected) {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                                        } else {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-                                        }
-                                    )
+                                    .background(bgColor)
                                     .border(
                                         width = if (isSelected) 1.5.dp else 0.8.dp,
                                         color = if (isSelected) {
                                             MaterialTheme.colorScheme.primary
                                         } else {
-                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
                                         },
                                         shape = RoundedCornerShape(16.dp)
                                     )
@@ -221,7 +227,6 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
             }
         }
 
-        // About & GitHub Releases Update Checker
         item {
             LiquidGlassSurface(
                 shape = RoundedCornerShape(26.dp),
@@ -305,12 +310,29 @@ private fun ThemeOptionTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val prismColors = LocalPrismColors.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1f else 0.97f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
+        targetValue = when {
+            isPressed -> 0.94f
+            selected -> 1f
+            else -> 0.975f
+        },
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 600f),
         label = "themeTileSpring"
     )
-    val tileShape = RoundedCornerShape(18.dp)
+    val tileShape = RoundedCornerShape(20.dp)
+    val tileBackground by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = if (prismColors.isDarkSurface) 0.22f else 0.14f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (prismColors.isDarkSurface) 0.55f else 0.45f)
+        },
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 420f),
+        label = "themeTileBg"
+    )
 
     Column(
         modifier = modifier
@@ -319,23 +341,21 @@ private fun ThemeOptionTile(
                 scaleY = scale
             }
             .clip(tileShape)
-            .background(
-                if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
-                }
-            )
+            .background(tileBackground)
             .border(
                 width = if (selected) 1.6.dp else 0.8.dp,
                 color = if (selected) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
+                    MaterialTheme.colorScheme.outline.copy(alpha = 0.42f)
                 },
                 shape = tileShape
             )
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
             .padding(12.dp)
             .testTag("theme_option_${theme.name}")
     ) {
@@ -355,7 +375,11 @@ private fun ThemeOptionTile(
                     )
                     .border(
                         width = 1.dp,
-                        color = Color.White.copy(alpha = 0.55f),
+                        color = if (theme == PrismTheme.CLEAN_WHITE) {
+                            Color(0xFFCBD5E1)
+                        } else {
+                            Color.White.copy(alpha = 0.5f)
+                        },
                         shape = CircleShape
                     )
             )

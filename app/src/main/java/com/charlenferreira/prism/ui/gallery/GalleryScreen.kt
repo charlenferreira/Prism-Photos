@@ -9,8 +9,12 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,9 +45,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BrokenImage
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -62,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -72,6 +79,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -98,6 +106,7 @@ fun GalleryScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val rawFilterActive by viewModel.rawFilterEnabled.collectAsStateWithLifecycle()
+    var filterMenuExpanded by remember { mutableStateOf(false) }
 
     fun syncPermissions() {
         val (full, partial) = checkMediaPermissions(context)
@@ -124,104 +133,145 @@ fun GalleryScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.statusBars)
     ) {
-        GalleryTopBar(
-            uiState = uiState,
-            rawFilterActive = rawFilterActive,
-            gridColumns = gridColumns,
-            onToggleRaw = { viewModel.toggleRawFilter() }
-        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            GalleryTopBar(
+                uiState = uiState,
+                rawFilterActive = rawFilterActive,
+                gridColumns = gridColumns,
+                onFilterIconClick = { filterMenuExpanded = !filterMenuExpanded }
+            )
 
-        when (val state = uiState) {
-            GalleryUiState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 3.dp
-                    )
+            when (val state = uiState) {
+                GalleryUiState.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 3.dp
+                        )
+                    }
                 }
-            }
 
-            GalleryUiState.PermissionRequest -> {
-                PermissionRequestCard(
-                    onRequestPermission = {
-                        permissionLauncher.launch(requiredMediaPermissions())
-                    },
-                    onOpenSettings = {
-                        val intent = Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.fromParts("package", context.packageName, null)
-                        )
-                        context.startActivity(intent)
-                    }
-                )
-            }
-
-            is GalleryUiState.Error -> {
-                GalleryStatusCard(
-                    icon = Icons.Rounded.BrokenImage,
-                    title = stringResource(R.string.error_title),
-                    subtitle = state.message,
-                    actionLabel = stringResource(R.string.retry_button),
-                    onAction = { viewModel.refreshMedia() }
-                )
-            }
-
-            is GalleryUiState.Empty -> {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    if (state.isPartialAccess) {
-                        PartialAccessBanner(
-                            onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
-                        )
-                    }
-                    GalleryStatusCard(
-                        icon = Icons.Rounded.PhotoLibrary,
-                        title = stringResource(
-                            if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
-                        ),
-                        subtitle = stringResource(
-                            if (state.isRawFilterActive) R.string.empty_raw_description else R.string.empty_description
-                        ),
-                        actionLabel = if (state.isRawFilterActive) {
-                            stringResource(R.string.filter_raw)
-                        } else {
-                            stringResource(R.string.retry_button)
+                GalleryUiState.PermissionRequest -> {
+                    PermissionRequestCard(
+                        onRequestPermission = {
+                            permissionLauncher.launch(requiredMediaPermissions())
                         },
-                        onAction = {
-                            if (state.isRawFilterActive) {
-                                viewModel.toggleRawFilter()
-                            } else {
-                                viewModel.refreshMedia()
-                            }
+                        onOpenSettings = {
+                            val intent = Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", context.packageName, null)
+                            )
+                            context.startActivity(intent)
                         }
                     )
                 }
-            }
 
-            is GalleryUiState.Success -> {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    if (state.isPartialAccess) {
-                        PartialAccessBanner(
-                            onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
-                        )
-                    }
-                    PinchablePhotoGrid(
-                        photos = state.photos,
-                        gridColumns = gridColumns,
-                        onGridColumnsChanged = { newColumns ->
-                            viewModel.setGridColumns(newColumns)
-                        },
-                        onPhotoClick = onPhotoClick
+                is GalleryUiState.Error -> {
+                    GalleryStatusCard(
+                        icon = Icons.Rounded.BrokenImage,
+                        title = stringResource(R.string.error_title),
+                        subtitle = state.message,
+                        actionLabel = stringResource(R.string.retry_button),
+                        onAction = { viewModel.refreshMedia() }
                     )
                 }
+
+                is GalleryUiState.Empty -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (state.isPartialAccess) {
+                            PartialAccessBanner(
+                                onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
+                            )
+                        }
+                        GalleryStatusCard(
+                            icon = Icons.Rounded.PhotoLibrary,
+                            title = stringResource(
+                                if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
+                            ),
+                            subtitle = stringResource(
+                                if (state.isRawFilterActive) R.string.empty_raw_description else R.string.empty_description
+                            ),
+                            actionLabel = if (state.isRawFilterActive) {
+                                stringResource(R.string.filter_all)
+                            } else {
+                                stringResource(R.string.retry_button)
+                            },
+                            onAction = {
+                                if (state.isRawFilterActive) {
+                                    viewModel.toggleRawFilter()
+                                } else {
+                                    viewModel.refreshMedia()
+                                }
+                            }
+                        )
+                    }
+                }
+
+                is GalleryUiState.Success -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        if (state.isPartialAccess) {
+                            PartialAccessBanner(
+                                onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
+                            )
+                        }
+                        PinchablePhotoGrid(
+                            photos = state.photos,
+                            gridColumns = gridColumns,
+                            onGridColumnsChanged = { newColumns ->
+                                viewModel.setGridColumns(newColumns)
+                            },
+                            onPhotoClick = { id ->
+                                filterMenuExpanded = false
+                                onPhotoClick(id)
+                            }
+                        )
+                    }
+                }
             }
+        }
+
+        // Hidden corner filter popover revealed by compact top-right icon
+        val springFloatSpec = spring<Float>(dampingRatio = 0.72f, stiffness = 480f)
+        AnimatedVisibility(
+            visible = filterMenuExpanded,
+            enter = fadeIn(springFloatSpec) + scaleIn(
+                initialScale = 0.8f,
+                transformOrigin = TransformOrigin(1f, 0f),
+                animationSpec = springFloatSpec
+            ),
+            exit = fadeOut(springFloatSpec) + scaleOut(
+                targetScale = 0.85f,
+                transformOrigin = TransformOrigin(1f, 0f),
+                animationSpec = springFloatSpec
+            ),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 66.dp, end = 16.dp)
+                .zIndex(10f)
+        ) {
+            CornerFilterPopover(
+                rawFilterActive = rawFilterActive,
+                rawCount = when (val state = uiState) {
+                    is GalleryUiState.Success -> state.rawCount
+                    else -> null
+                },
+                onSelectAll = {
+                    if (rawFilterActive) viewModel.toggleRawFilter()
+                    filterMenuExpanded = false
+                },
+                onSelectRaw = {
+                    if (!rawFilterActive) viewModel.toggleRawFilter()
+                    filterMenuExpanded = false
+                }
+            )
         }
     }
 }
@@ -231,96 +281,157 @@ private fun GalleryTopBar(
     uiState: GalleryUiState,
     rawFilterActive: Boolean,
     gridColumns: Int,
-    onToggleRaw: () -> Unit
+    onFilterIconClick: () -> Unit
 ) {
-    val prismColors = LocalPrismColors.current
-    val rawPillTint by animateColorAsState(
-        targetValue = if (rawFilterActive) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            Color.Transparent
-        },
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
-        label = "rawPillColor"
-    )
-
-    val subtitleText = when (uiState) {
+    val counterText = when (uiState) {
         is GalleryUiState.Success -> {
             val count = uiState.photos.size
-            "$count itens • ${gridColumns}×"
+            val suffix = if (rawFilterActive) " • RAW" else ""
+            "$count itens • ${gridColumns}×$suffix"
         }
         is GalleryUiState.Empty -> "0 itens • ${gridColumns}×"
-        else -> "Liquid Glass"
+        else -> "${gridColumns}×"
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         LiquidGlassSurface(
             shape = CircleShape,
-            cornerRadiusDp = 28.dp,
-            blurRadius = 30f
+            cornerRadiusDp = 22.dp,
+            blurRadius = 22f
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitleText,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Text(
+                text = counterText,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+            )
         }
 
         LiquidGlassSurface(
             shape = CircleShape,
             cornerRadiusDp = 24.dp,
-            blurRadius = 26f,
-            tintOverride = if (rawFilterActive) rawPillTint else null,
-            onClick = onToggleRaw,
-            modifier = Modifier.testTag("raw_filter_button")
+            blurRadius = 22f,
+            tintOverride = if (rawFilterActive) MaterialTheme.colorScheme.primary else null,
+            onClick = onFilterIconClick,
+            modifier = Modifier
+                .size(48.dp)
+                .testTag("raw_filter_button")
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (rawFilterActive) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            }
-                        )
-                )
-                Text(
-                    text = stringResource(R.string.filter_raw),
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = if (rawFilterActive) {
-                        if (prismColors.isDarkSurface) Color.White else MaterialTheme.colorScheme.primary
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.Tune,
+                    contentDescription = stringResource(R.string.filter_toggle_cd),
+                    tint = if (rawFilterActive) {
+                        MaterialTheme.colorScheme.primary
                     } else {
                         MaterialTheme.colorScheme.onSurface
-                    }
+                    },
+                    modifier = Modifier.size(20.dp)
                 )
+                if (rawFilterActive) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp)
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary)
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun CornerFilterPopover(
+    rawFilterActive: Boolean,
+    rawCount: Int?,
+    onSelectAll: () -> Unit,
+    onSelectRaw: () -> Unit
+) {
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(22.dp),
+        cornerRadiusDp = 22.dp,
+        blurRadius = 28f,
+        modifier = Modifier
+            .width(176.dp)
+            .testTag("filter_popover")
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            FilterMenuItem(
+                label = stringResource(R.string.filter_all),
+                selected = !rawFilterActive,
+                onClick = onSelectAll,
+                testTag = "filter_option_all"
+            )
+            val rawLabel = if (rawCount != null) {
+                "${stringResource(R.string.filter_raw)} ($rawCount)"
+            } else {
+                stringResource(R.string.filter_raw)
+            }
+            FilterMenuItem(
+                label = rawLabel,
+                selected = rawFilterActive,
+                onClick = onSelectRaw,
+                testTag = "filter_option_raw"
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterMenuItem(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    testTag: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                } else {
+                    Color.Transparent
+                }
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .testTag(testTag),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 13.sp,
+            color = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            }
+        )
+        if (selected) {
+            Icon(
+                imageVector = Icons.Rounded.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
@@ -330,7 +441,7 @@ private fun PartialAccessBanner(onManage: () -> Unit) {
     LiquidGlassSurface(
         shape = RoundedCornerShape(18.dp),
         cornerRadiusDp = 18.dp,
-        blurRadius = 22f,
+        blurRadius = 20f,
         onClick = onManage,
         modifier = Modifier
             .fillMaxWidth()
@@ -380,8 +491,8 @@ private fun PinchablePhotoGrid(
             top = 4.dp,
             bottom = 112.dp
         ),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars)
@@ -442,13 +553,13 @@ private fun PhotoGridTile(
 ) {
     val context = LocalContext.current
     val prismColors = LocalPrismColors.current
-    val tileShape = RoundedCornerShape(12.dp)
+    val tileShape = RoundedCornerShape(14.dp)
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(tileShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
             .border(
                 width = 0.75.dp,
                 brush = Brush.linearGradient(
@@ -497,7 +608,7 @@ private fun PhotoGridTile(
                     .align(Alignment.BottomEnd)
                     .padding(6.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.62f))
+                    .background(Color.Black.copy(alpha = 0.58f))
                     .padding(horizontal = 6.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp)

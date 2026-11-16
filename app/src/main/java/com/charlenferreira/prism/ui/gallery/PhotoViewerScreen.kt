@@ -348,8 +348,8 @@ private fun ZoomablePhotoPage(
                     onDoubleTap = { tapOffset ->
                         scope.launch {
                             val springSpec = spring<Float>(
-                                dampingRatio = 0.6f,
-                                stiffness = 800f
+                                dampingRatio = 0.78f,
+                                stiffness = 360f
                             )
                             if (scale.value > 1.15f) {
                                 launch { scale.animateTo(1f, springSpec) }
@@ -410,8 +410,8 @@ private fun ZoomablePhotoPage(
                     if (scale.value <= 1.02f) {
                         scope.launch {
                             val springSpec = spring<Float>(
-                                dampingRatio = 0.6f,
-                                stiffness = 800f
+                                dampingRatio = 0.78f,
+                                stiffness = 360f
                             )
                             launch { scale.animateTo(1f, springSpec) }
                             launch { offsetX.animateTo(0f, springSpec) }

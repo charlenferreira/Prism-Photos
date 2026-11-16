@@ -169,7 +169,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                             val isSelected = gridColumns == count
                             val scale by animateFloatAsState(
                                 targetValue = if (isSelected) 1f else 0.96f,
-                                animationSpec = spring(dampingRatio = 0.65f, stiffness = 550f),
+                                animationSpec = spring(dampingRatio = 0.74f, stiffness = 380f),
                                 label = "gridChipSpring"
                             )
                             val bgColor by animateColorAsState(
@@ -320,7 +320,7 @@ private fun ThemeOptionTile(
             selected -> 1f
             else -> 0.975f
         },
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = 600f),
+        animationSpec = spring(dampingRatio = 0.74f, stiffness = 400f),
         label = "themeTileSpring"
     )
     val tileShape = RoundedCornerShape(20.dp)

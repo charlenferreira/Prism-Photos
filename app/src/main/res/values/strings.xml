@@ -2,11 +2,12 @@
     <string name="app_name">Prism</string>
     <string name="tab_gallery">Galeria</string>
     <string name="tab_settings">Ajustes</string>
-    <string name="filter_all">Todas</string>
     <string name="filter_raw">RAW</string>
-    <string name="filter_toggle_cd">Filtrar mídia</string>
+    <string name="filter_menu_description">Filtrar mídias</string>
+    <string name="filter_all_media">Todas as mídias</string>
+    <string name="filter_raw_only">Somente RAW / DNG</string>
     <string name="permission_title">Acesso à sua galeria</string>
-    <string name="permission_description">Permita acesso às fotos e vídeos locais para visualizar a grade, abrir o inspetor EXIF e filtrar arquivos RAW/DNG.</string>
+    <string name="permission_description">Conceda acesso às fotos e vídeos locais para navegar na grade, visualizar detalhes EXIF e filtrar arquivos RAW/DNG.</string>
     <string name="permission_grant">Conceder acesso</string>
     <string name="permission_open_settings">Abrir configurações</string>
     <string name="partial_access_banner">Acesso limitado às mídias selecionadas</string>
@@ -34,7 +35,7 @@
     <string name="exif_resolution">Resolução</string>
     <string name="exif_size">Tamanho</string>
     <string name="exif_unavailable">N/D</string>
-    <string name="settings_title">Ajustes</string>
+    <string name="settings_title">Configurações</string>
     <string name="settings_theme_section">Aparência &amp; Temas</string>
     <string name="settings_grid_section">Grade da Galeria</string>
     <string name="settings_grid_hint">Você também pode usar o gesto de pinça diretamente na grade.</string>

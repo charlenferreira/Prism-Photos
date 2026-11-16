@@ -11,10 +11,13 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -75,11 +78,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -106,7 +107,7 @@ fun GalleryScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val rawFilterActive by viewModel.rawFilterEnabled.collectAsStateWithLifecycle()
-    var filterMenuExpanded by remember { mutableStateOf(false) }
+    var isFilterMenuExpanded by remember { mutableStateOf(false) }
 
     fun syncPermissions() {
         val (full, partial) = checkMediaPermissions(context)
@@ -143,7 +144,7 @@ fun GalleryScreen(
                 uiState = uiState,
                 rawFilterActive = rawFilterActive,
                 gridColumns = gridColumns,
-                onFilterIconClick = { filterMenuExpanded = !filterMenuExpanded }
+                onFilterIconClick = { isFilterMenuExpanded = !isFilterMenuExpanded }
             )
 
             when (val state = uiState) {
@@ -200,7 +201,7 @@ fun GalleryScreen(
                                 if (state.isRawFilterActive) R.string.empty_raw_description else R.string.empty_description
                             ),
                             actionLabel = if (state.isRawFilterActive) {
-                                stringResource(R.string.filter_all)
+                                stringResource(R.string.filter_all_media)
                             } else {
                                 stringResource(R.string.retry_button)
                             },
@@ -228,50 +229,69 @@ fun GalleryScreen(
                             onGridColumnsChanged = { newColumns ->
                                 viewModel.setGridColumns(newColumns)
                             },
-                            onPhotoClick = { id ->
-                                filterMenuExpanded = false
-                                onPhotoClick(id)
-                            }
+                            onPhotoClick = onPhotoClick
                         )
                     }
                 }
             }
         }
 
-        // Hidden corner filter popover revealed by compact top-right icon
-        val springFloatSpec = spring<Float>(dampingRatio = 0.72f, stiffness = 480f)
+        // Compact floating corner filter popover
         AnimatedVisibility(
-            visible = filterMenuExpanded,
-            enter = fadeIn(springFloatSpec) + scaleIn(
-                initialScale = 0.8f,
-                transformOrigin = TransformOrigin(1f, 0f),
-                animationSpec = springFloatSpec
-            ),
-            exit = fadeOut(springFloatSpec) + scaleOut(
-                targetScale = 0.85f,
-                transformOrigin = TransformOrigin(1f, 0f),
-                animationSpec = springFloatSpec
-            ),
+            visible = isFilterMenuExpanded,
+            enter = fadeIn(tween(180)) +
+                scaleIn(
+                    initialScale = 0.86f,
+                    transformOrigin = TransformOrigin(1f, 0f),
+                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 360f)
+                ) +
+                expandVertically(
+                    expandFrom = Alignment.Top,
+                    animationSpec = spring(dampingRatio = 0.80f, stiffness = 360f)
+                ),
+            exit = fadeOut(tween(140)) +
+                scaleOut(
+                    targetScale = 0.88f,
+                    transformOrigin = TransformOrigin(1f, 0f),
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f)
+                ) +
+                shrinkVertically(shrinkTowards = Alignment.Top),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 66.dp, end = 16.dp)
-                .zIndex(10f)
+                .padding(top = 64.dp, end = 16.dp)
         ) {
-            CornerFilterPopover(
-                rawFilterActive = rawFilterActive,
-                rawCount = when (val state = uiState) {
-                    is GalleryUiState.Success -> state.rawCount
-                    else -> null
-                },
-                onSelectAll = {
-                    if (rawFilterActive) viewModel.toggleRawFilter()
-                    filterMenuExpanded = false
-                },
-                onSelectRaw = {
-                    if (!rawFilterActive) viewModel.toggleRawFilter()
-                    filterMenuExpanded = false
+            LiquidGlassSurface(
+                shape = RoundedCornerShape(22.dp),
+                cornerRadiusDp = 22.dp,
+                blurRadius = 28f,
+                modifier = Modifier
+                    .width(216.dp)
+                    .testTag("filter_popover_menu")
+            ) {
+                Column(
+                    modifier = Modifier.padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    FilterPopoverItem(
+                        label = stringResource(R.string.filter_all_media),
+                        selected = !rawFilterActive,
+                        testTag = "filter_option_all",
+                        onClick = {
+                            if (rawFilterActive) viewModel.toggleRawFilter()
+                            isFilterMenuExpanded = false
+                        }
+                    )
+                    FilterPopoverItem(
+                        label = stringResource(R.string.filter_raw_only),
+                        selected = rawFilterActive,
+                        testTag = "filter_option_raw",
+                        onClick = {
+                            if (!rawFilterActive) viewModel.toggleRawFilter()
+                            isFilterMenuExpanded = false
+                        }
+                    )
                 }
-            )
+            }
         }
     }
 }
@@ -285,11 +305,13 @@ private fun GalleryTopBar(
 ) {
     val counterText = when (uiState) {
         is GalleryUiState.Success -> {
-            val count = uiState.photos.size
-            val suffix = if (rawFilterActive) " • RAW" else ""
-            "$count itens • ${gridColumns}×$suffix"
+            val prefix = if (rawFilterActive) "RAW • " else ""
+            "$prefix${uiState.photos.size} itens • ${gridColumns}×"
         }
-        is GalleryUiState.Empty -> "0 itens • ${gridColumns}×"
+        is GalleryUiState.Empty -> {
+            if (rawFilterActive) "RAW • 0 itens" else "0 itens • ${gridColumns}×"
+        }
+        is GalleryUiState.Loading -> "..."
         else -> "${gridColumns}×"
     }
 
@@ -302,7 +324,7 @@ private fun GalleryTopBar(
     ) {
         LiquidGlassSurface(
             shape = CircleShape,
-            cornerRadiusDp = 22.dp,
+            cornerRadiusDp = 20.dp,
             blurRadius = 22f
         ) {
             Text(
@@ -310,14 +332,15 @@ private fun GalleryTopBar(
                 fontFamily = FontFamily.Monospace,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
             )
         }
 
+        // Small compact corner filter icon button
         LiquidGlassSurface(
             shape = CircleShape,
             cornerRadiusDp = 24.dp,
-            blurRadius = 22f,
+            blurRadius = 24f,
             tintOverride = if (rawFilterActive) MaterialTheme.colorScheme.primary else null,
             onClick = onFilterIconClick,
             modifier = Modifier
@@ -327,7 +350,7 @@ private fun GalleryTopBar(
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Rounded.Tune,
-                    contentDescription = stringResource(R.string.filter_toggle_cd),
+                    contentDescription = stringResource(R.string.filter_menu_description),
                     tint = if (rawFilterActive) {
                         MaterialTheme.colorScheme.primary
                     } else {
@@ -351,51 +374,11 @@ private fun GalleryTopBar(
 }
 
 @Composable
-private fun CornerFilterPopover(
-    rawFilterActive: Boolean,
-    rawCount: Int?,
-    onSelectAll: () -> Unit,
-    onSelectRaw: () -> Unit
-) {
-    LiquidGlassSurface(
-        shape = RoundedCornerShape(22.dp),
-        cornerRadiusDp = 22.dp,
-        blurRadius = 28f,
-        modifier = Modifier
-            .width(176.dp)
-            .testTag("filter_popover")
-    ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            FilterMenuItem(
-                label = stringResource(R.string.filter_all),
-                selected = !rawFilterActive,
-                onClick = onSelectAll,
-                testTag = "filter_option_all"
-            )
-            val rawLabel = if (rawCount != null) {
-                "${stringResource(R.string.filter_raw)} ($rawCount)"
-            } else {
-                stringResource(R.string.filter_raw)
-            }
-            FilterMenuItem(
-                label = rawLabel,
-                selected = rawFilterActive,
-                onClick = onSelectRaw,
-                testTag = "filter_option_raw"
-            )
-        }
-    }
-}
-
-@Composable
-private fun FilterMenuItem(
+private fun FilterPopoverItem(
     label: String,
     selected: Boolean,
-    onClick: () -> Unit,
-    testTag: String
+    testTag: String,
+    onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -409,16 +392,14 @@ private fun FilterMenuItem(
                 }
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .padding(horizontal = 12.dp, vertical = 11.dp)
             .testTag(testTag),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            fontFamily = FontFamily.Monospace,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            fontSize = 13.sp,
+            style = MaterialTheme.typography.labelLarge,
             color = if (selected) {
                 MaterialTheme.colorScheme.primary
             } else {
@@ -430,7 +411,7 @@ private fun FilterMenuItem(
                 imageVector = Icons.Rounded.Check,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -441,7 +422,7 @@ private fun PartialAccessBanner(onManage: () -> Unit) {
     LiquidGlassSurface(
         shape = RoundedCornerShape(18.dp),
         cornerRadiusDp = 18.dp,
-        blurRadius = 20f,
+        blurRadius = 22f,
         onClick = onManage,
         modifier = Modifier
             .fillMaxWidth()
@@ -491,8 +472,8 @@ private fun PinchablePhotoGrid(
             top = 4.dp,
             bottom = 112.dp
         ),
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars)
@@ -553,13 +534,13 @@ private fun PhotoGridTile(
 ) {
     val context = LocalContext.current
     val prismColors = LocalPrismColors.current
-    val tileShape = RoundedCornerShape(14.dp)
+    val tileShape = RoundedCornerShape(12.dp)
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(tileShape)
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
             .border(
                 width = 0.75.dp,
                 brush = Brush.linearGradient(
@@ -608,7 +589,7 @@ private fun PhotoGridTile(
                     .align(Alignment.BottomEnd)
                     .padding(6.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(Color.Black.copy(alpha = 0.58f))
+                    .background(Color.Black.copy(alpha = 0.62f))
                     .padding(horizontal = 6.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(3.dp)

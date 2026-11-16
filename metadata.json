@@ -1,0 +1,6 @@
+{
+  "name": "Prism",
+  "description": "Galeria de fotos nativa em Jetpack Compose com visual Liquid Glass, 6 temas dinamicos, filtro RAW/DNG e inspetor EXIF.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

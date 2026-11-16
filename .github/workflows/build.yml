@@ -1,0 +1,95 @@
+name: Build Prism Android APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release Prism
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Ensure Gradle wrapper
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 9.3.1 --distribution-type bin
+          fi
+          chmod +x gradlew
+
+      - name: Inject dynamic versionName
+        run: |
+          sed -i "s/versionName = \".*\"/versionName = \"1.0.${{ github.run_number }}\"/" app/build.gradle.kts
+
+      - name: Ensure debug.keystore
+        run: |
+          if [ ! -f app/debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore app/debug.keystore \
+              -storepass android \
+              -keypass android \
+              -alias androiddebugkey \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+            git checkout -- app/build.gradle.kts
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -f app/debug.keystore
+            git commit -m "chore(ci): persist debug keystore [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+            sed -i "s/versionName = \".*\"/versionName = \"1.0.${{ github.run_number }}\"/" app/build.gradle.kts
+          fi
+          cp -f app/debug.keystore debug.keystore
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug -Djava.awt.headless=true --no-daemon --stacktrace
+
+      - name: Rename and stage APK artifact
+        run: |
+          mkdir -p artifacts
+          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: APK not found in app/build/outputs/apk/debug"
+            exit 1
+          fi
+          cp "$APK_PATH" "artifacts/Prism-v1.0.${{ github.run_number }}.apk"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Prism-v1.0.${{ github.run_number }}
+          path: artifacts/Prism-v1.0.${{ github.run_number }}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: Prism v1.0.${{ github.run_number }}
+          files: artifacts/Prism-v1.0.*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

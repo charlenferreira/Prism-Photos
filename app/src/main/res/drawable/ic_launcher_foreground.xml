@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Left refractive facet of the Prism triangle -->
+    <path android:pathData="M54,24 L27,76 L54,67 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="30"
+                android:startY="26"
+                android:endX="54"
+                android:endY="74"
+                android:type="linear">
+                <item
+                    android:color="#FFF5FAFF"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF7AE3FF"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right refractive facet of the Prism triangle -->
+    <path android:pathData="M54,24 L81,76 L54,67 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="24"
+                android:endX="81"
+                android:endY="76"
+                android:type="linear">
+                <item
+                    android:color="#FFD6E4FF"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF9D7BFF"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bottom crystal base facet -->
+    <path android:pathData="M27,76 L81,76 L54,67 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="27"
+                android:startY="76"
+                android:endX="81"
+                android:endY="76"
+                android:type="linear">
+                <item
+                    android:color="#FF4CC9F0"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FFF77FBE"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Specular liquid glass edge stroke -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,24 L81,76 L27,76 Z"
+        android:strokeWidth="1.8"
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="40"
+                android:startY="24"
+                android:endX="74"
+                android:endY="78"
+                android:type="linear">
+                <item
+                    android:color="#FFFFFFFF"
+                    android:offset="0.0" />
+                <item
+                    android:color="#88FFFFFF"
+                    android:offset="0.5" />
+                <item
+                    android:color="#CC9EE7FF"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

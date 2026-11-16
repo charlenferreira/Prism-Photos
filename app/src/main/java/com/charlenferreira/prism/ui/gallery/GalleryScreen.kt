@@ -1,0 +1,710 @@
+package com.charlenferreira.prism.ui.gallery
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.BrokenImage
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import com.charlenferreira.prism.R
+import com.charlenferreira.prism.data.model.PhotoItem
+import com.charlenferreira.prism.data.repository.SettingsRepository
+import com.charlenferreira.prism.ui.components.LiquidGlassSurface
+import com.charlenferreira.prism.ui.theme.LocalPrismColors
+import java.util.Locale
+
+@Composable
+fun GalleryScreen(
+    viewModel: GalleryViewModel,
+    onPhotoClick: (Long) -> Unit
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
+    val rawFilterActive by viewModel.rawFilterEnabled.collectAsStateWithLifecycle()
+
+    fun syncPermissions() {
+        val (full, partial) = checkMediaPermissions(context)
+        viewModel.onPermissionStatusUpdated(hasFullAccess = full, hasPartialAccess = partial)
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        syncPermissions()
+    }
+
+    LaunchedEffect(Unit) {
+        syncPermissions()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                syncPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        GalleryTopBar(
+            uiState = uiState,
+            rawFilterActive = rawFilterActive,
+            gridColumns = gridColumns,
+            onToggleRaw = { viewModel.toggleRawFilter() }
+        )
+
+        when (val state = uiState) {
+            GalleryUiState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
+                }
+            }
+
+            GalleryUiState.PermissionRequest -> {
+                PermissionRequestCard(
+                    onRequestPermission = {
+                        permissionLauncher.launch(requiredMediaPermissions())
+                    },
+                    onOpenSettings = {
+                        val intent = Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null)
+                        )
+                        context.startActivity(intent)
+                    }
+                )
+            }
+
+            is GalleryUiState.Error -> {
+                GalleryStatusCard(
+                    icon = Icons.Rounded.BrokenImage,
+                    title = stringResource(R.string.error_title),
+                    subtitle = state.message,
+                    actionLabel = stringResource(R.string.retry_button),
+                    onAction = { viewModel.refreshMedia() }
+                )
+            }
+
+            is GalleryUiState.Empty -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (state.isPartialAccess) {
+                        PartialAccessBanner(
+                            onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
+                        )
+                    }
+                    GalleryStatusCard(
+                        icon = Icons.Rounded.PhotoLibrary,
+                        title = stringResource(
+                            if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
+                        ),
+                        subtitle = stringResource(
+                            if (state.isRawFilterActive) R.string.empty_raw_description else R.string.empty_description
+                        ),
+                        actionLabel = if (state.isRawFilterActive) {
+                            stringResource(R.string.filter_raw)
+                        } else {
+                            stringResource(R.string.retry_button)
+                        },
+                        onAction = {
+                            if (state.isRawFilterActive) {
+                                viewModel.toggleRawFilter()
+                            } else {
+                                viewModel.refreshMedia()
+                            }
+                        }
+                    )
+                }
+            }
+
+            is GalleryUiState.Success -> {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (state.isPartialAccess) {
+                        PartialAccessBanner(
+                            onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
+                        )
+                    }
+                    PinchablePhotoGrid(
+                        photos = state.photos,
+                        gridColumns = gridColumns,
+                        onGridColumnsChanged = { newColumns ->
+                            viewModel.setGridColumns(newColumns)
+                        },
+                        onPhotoClick = onPhotoClick
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GalleryTopBar(
+    uiState: GalleryUiState,
+    rawFilterActive: Boolean,
+    gridColumns: Int,
+    onToggleRaw: () -> Unit
+) {
+    val prismColors = LocalPrismColors.current
+    val rawPillTint by animateColorAsState(
+        targetValue = if (rawFilterActive) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            Color.Transparent
+        },
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
+        label = "rawPillColor"
+    )
+
+    val subtitleText = when (uiState) {
+        is GalleryUiState.Success -> {
+            val count = uiState.photos.size
+            "$count itens • ${gridColumns}×"
+        }
+        is GalleryUiState.Empty -> "0 itens • ${gridColumns}×"
+        else -> "Liquid Glass"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LiquidGlassSurface(
+            shape = CircleShape,
+            cornerRadiusDp = 28.dp,
+            blurRadius = 30f
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = subtitleText,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        LiquidGlassSurface(
+            shape = CircleShape,
+            cornerRadiusDp = 24.dp,
+            blurRadius = 26f,
+            tintOverride = if (rawFilterActive) rawPillTint else null,
+            onClick = onToggleRaw,
+            modifier = Modifier.testTag("raw_filter_button")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (rawFilterActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            }
+                        )
+                )
+                Text(
+                    text = stringResource(R.string.filter_raw),
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = if (rawFilterActive) {
+                        if (prismColors.isDarkSurface) Color.White else MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PartialAccessBanner(onManage: () -> Unit) {
+    LiquidGlassSurface(
+        shape = RoundedCornerShape(18.dp),
+        cornerRadiusDp = 18.dp,
+        blurRadius = 22f,
+        onClick = onManage,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("partial_access_banner")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.partial_access_banner),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.partial_access_manage),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+private fun PinchablePhotoGrid(
+    photos: List<PhotoItem>,
+    gridColumns: Int,
+    onGridColumnsChanged: (Int) -> Unit,
+    onPhotoClick: (Long) -> Unit
+) {
+    var currentColumnsState by remember { mutableStateOf(gridColumns) }
+    LaunchedEffect(gridColumns) {
+        currentColumnsState = gridColumns
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(gridColumns),
+        contentPadding = PaddingValues(
+            start = 8.dp,
+            end = 8.dp,
+            top = 4.dp,
+            bottom = 112.dp
+        ),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .testTag("photo_grid")
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    var cumulativeZoom = 1f
+                    var switchedInGesture = false
+                    do {
+                        val event = awaitPointerEvent()
+                        val pressedCount = event.changes.count { it.pressed }
+                        if (pressedCount >= 2) {
+                            val zoom = event.calculateZoom()
+                            cumulativeZoom *= zoom
+                            if (!switchedInGesture) {
+                                if (cumulativeZoom >= 1.24f &&
+                                    currentColumnsState > SettingsRepository.MIN_COLUMNS
+                                ) {
+                                    val next = currentColumnsState - 1
+                                    currentColumnsState = next
+                                    onGridColumnsChanged(next)
+                                    switchedInGesture = true
+                                } else if (cumulativeZoom <= 0.80f &&
+                                    currentColumnsState < SettingsRepository.MAX_COLUMNS
+                                ) {
+                                    val next = currentColumnsState + 1
+                                    currentColumnsState = next
+                                    onGridColumnsChanged(next)
+                                    switchedInGesture = true
+                                }
+                            }
+                            event.changes.forEach { it.consume() }
+                        } else {
+                            cumulativeZoom = 1f
+                            switchedInGesture = false
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            }
+    ) {
+        items(
+            items = photos,
+            key = { it.id }
+        ) { photo ->
+            PhotoGridTile(
+                photo = photo,
+                onClick = { onPhotoClick(photo.id) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhotoGridTile(
+    photo: PhotoItem,
+    onClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val prismColors = LocalPrismColors.current
+    val tileShape = RoundedCornerShape(12.dp)
+
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .clip(tileShape)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .border(
+                width = 0.75.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        prismColors.glassBorderStart.copy(alpha = 0.45f),
+                        Color.Transparent,
+                        prismColors.glassBorderEnd.copy(alpha = 0.35f)
+                    )
+                ),
+                shape = tileShape
+            )
+            .clickable(onClick = onClick)
+            .testTag("photo_tile_${photo.id}")
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(context)
+                .data(photo.uri)
+                .crossfade(true)
+                .build(),
+            contentDescription = photo.displayName,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        if (photo.isRaw) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(prismColors.rawBadgeContainer)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "RAW",
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = prismColors.rawBadgeContent
+                )
+            }
+        }
+
+        if (photo.isVideo) {
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(6.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black.copy(alpha = 0.62f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(12.dp)
+                )
+                Text(
+                    text = formatDuration(photo.durationMs),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionRequestCard(
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        LiquidGlassSurface(
+            shape = RoundedCornerShape(28.dp),
+            cornerRadiusDp = 28.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PhotoLibrary,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.permission_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.permission_description),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = onRequestPermission,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("grant_permission_button")
+                ) {
+                    Text(text = stringResource(R.string.permission_grant))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("open_app_settings_button")
+                ) {
+                    Text(text = stringResource(R.string.permission_open_settings))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GalleryStatusCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .padding(bottom = 72.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        LiquidGlassSurface(
+            shape = RoundedCornerShape(28.dp),
+            cornerRadiusDp = 28.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(44.dp)
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                Button(
+                    onClick = onAction,
+                    modifier = Modifier.testTag("status_action_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = actionLabel)
+                }
+            }
+        }
+    }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    if (durationMs <= 0L) return "0:00"
+    val totalSeconds = durationMs / 1000
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format(Locale.US, "%d:%02d", minutes, seconds)
+}
+
+fun requiredMediaPermissions(): Array<String> {
+    return when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+        )
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES,
+            Manifest.permission.READ_MEDIA_VIDEO
+        )
+        else -> arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+}
+
+fun checkMediaPermissions(context: Context): Pair<Boolean, Boolean> {
+    return when {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> {
+            val imagesGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED
+            val videoGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_VIDEO
+            ) == PackageManager.PERMISSION_GRANTED
+            val partialGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+            ) == PackageManager.PERMISSION_GRANTED
+            Pair(imagesGranted || videoGranted, partialGranted)
+        }
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+            val imagesGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_IMAGES
+            ) == PackageManager.PERMISSION_GRANTED
+            val videoGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_MEDIA_VIDEO
+            ) == PackageManager.PERMISSION_GRANTED
+            Pair(imagesGranted || videoGranted, false)
+        }
+        else -> {
+            val storageGranted = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+            Pair(storageGranted, false)
+        }
+    }
+}

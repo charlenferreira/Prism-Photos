@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,6 +43,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -61,29 +64,50 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.charlenferreira.prism.BuildConfig
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
+import com.charlenferreira.prism.ui.components.LocalPrismBackdrop
+import com.charlenferreira.prism.ui.components.PrismBackdropState
+import com.charlenferreira.prism.ui.components.prismBackdropSource
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
 import com.charlenferreira.prism.ui.theme.PrismTheme
 
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel,
+    sharedBackdropState: PrismBackdropState? = null,
+    onScrollTick: (() -> Unit)? = null
+) {
     val selectedTheme by viewModel.theme.collectAsStateWithLifecycle()
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsStateWithLifecycle()
     val updateStatusMessage by viewModel.updateStatusMessage.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
 
-    LazyColumn(
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = 12.dp,
-            bottom = 116.dp
-        ),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier
+    LaunchedEffect(listState.firstVisibleItemIndex, listState.firstVisibleItemScrollOffset) {
+        onScrollTick?.invoke()
+    }
+
+    val containerModifier = if (sharedBackdropState != null) {
+        Modifier
             .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars)
-            .windowInsetsPadding(WindowInsets.navigationBars)
-    ) {
+            .prismBackdropSource(sharedBackdropState)
+    } else {
+        Modifier.fillMaxSize()
+    }
+
+    CompositionLocalProvider(LocalPrismBackdrop provides null) {
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 12.dp,
+                bottom = 116.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = containerModifier
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+        ) {
         item {
             Text(
                 text = stringResource(R.string.settings_title),
@@ -304,6 +328,7 @@ fun SettingsScreen(viewModel: SettingsViewModel) {
                     }
                 }
             }
+        }
         }
     }
 }

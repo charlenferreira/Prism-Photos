@@ -55,8 +55,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -89,6 +91,9 @@ import coil3.request.crossfade
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.data.model.PhotoItem
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
+import com.charlenferreira.prism.ui.components.LocalPrismBackdrop
+import com.charlenferreira.prism.ui.components.prismBackdropSource
+import com.charlenferreira.prism.ui.components.rememberPrismBackdropState
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -124,89 +129,98 @@ fun PhotoViewerScreen(
     var showExifSheet by remember { mutableStateOf(false) }
     var showEditAppDialog by remember { mutableStateOf(false) }
     var isCurrentPageZoomed by remember { mutableStateOf(false) }
+    var viewerBackdropTick by remember { mutableIntStateOf(0) }
+    val viewerBackdropState = rememberPrismBackdropState { viewerBackdropTick }
 
     val exifMetadata by viewModel.selectedExif.collectAsStateWithLifecycle()
     val isLoadingExif by viewModel.isLoadingExif.collectAsStateWithLifecycle()
 
     val currentPhoto = photos.getOrElse(pagerState.currentPage) { photos.first() }
 
+    LaunchedEffect(pagerState.currentPage, pagerState.currentPageOffsetFraction) {
+        viewerBackdropTick++
+    }
+
     LaunchedEffect(pagerState.currentPage) {
         isCurrentPageZoomed = false
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
-        HorizontalPager(
-            state = pagerState,
-            userScrollEnabled = !isCurrentPageZoomed,
-            modifier = Modifier.fillMaxSize()
-        ) { pageIndex ->
-            val photo = photos[pageIndex]
-            ZoomablePhotoPage(
-                photo = photo,
-                onTap = { showChrome = !showChrome },
-                onZoomStateChanged = { zoomed ->
-                    if (pageIndex == pagerState.currentPage) {
-                        isCurrentPageZoomed = zoomed
-                    }
-                },
-                onPlayVideo = { openExternalVideoPlayer(context, photo) }
-            )
-        }
-
-        // Top floating Liquid Glass bar (Close + filename/RAW badge)
-        val viewerSpringFloat = spring<Float>(dampingRatio = 0.78f, stiffness = 480f)
-        AnimatedVisibility(
-            visible = showChrome,
-            enter = fadeIn(viewerSpringFloat) + scaleIn(
-                initialScale = 0.94f,
-                animationSpec = viewerSpringFloat
-            ),
-            exit = fadeOut(viewerSpringFloat) + scaleOut(
-                targetScale = 0.94f,
-                animationSpec = viewerSpringFloat
-            ),
+    CompositionLocalProvider(LocalPrismBackdrop provides viewerBackdropState) {
+        Box(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .fillMaxSize()
+                .background(Color.Black)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = !isCurrentPageZoomed,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .prismBackdropSource(viewerBackdropState)
+            ) { pageIndex ->
+                val photo = photos[pageIndex]
+                ZoomablePhotoPage(
+                    photo = photo,
+                    onTap = { showChrome = !showChrome },
+                    onZoomStateChanged = { zoomed ->
+                        if (pageIndex == pagerState.currentPage) {
+                            isCurrentPageZoomed = zoomed
+                        }
+                    },
+                    onPlayVideo = { openExternalVideoPlayer(context, photo) }
+                )
+            }
+
+            // Top floating Liquid Glass bar (Close + filename/RAW badge)
+            val viewerSpringFloat = spring<Float>(dampingRatio = 0.84f, stiffness = 480f)
+            AnimatedVisibility(
+                visible = showChrome,
+                enter = fadeIn(viewerSpringFloat) + scaleIn(
+                    initialScale = 0.94f,
+                    animationSpec = viewerSpringFloat
+                ),
+                exit = fadeOut(viewerSpringFloat) + scaleOut(
+                    targetScale = 0.94f,
+                    animationSpec = viewerSpringFloat
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
             ) {
-                LiquidGlassSurface(
-                    shape = CircleShape,
-                    cornerRadiusDp = 24.dp,
-                    tintOverride = Color(0xFF141824),
-                    onClick = onClose,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("viewer_close_button")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Rounded.Close,
-                            contentDescription = stringResource(R.string.action_close),
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
+                    LiquidGlassSurface(
+                        shape = CircleShape,
+                        cornerRadiusDp = 24.dp,
+                        darkFrostedOverride = true,
+                        onClick = onClose,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("viewer_close_button")
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.Close,
+                                contentDescription = stringResource(R.string.action_close),
+                                tint = Color.White,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
-                }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                LiquidGlassSurface(
-                    shape = CircleShape,
-                    cornerRadiusDp = 24.dp,
-                    tintOverride = Color(0xFF141824),
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
+                    LiquidGlassSurface(
+                        shape = CircleShape,
+                        cornerRadiusDp = 24.dp,
+                        darkFrostedOverride = true,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -265,7 +279,7 @@ fun PhotoViewerScreen(
                 LiquidGlassSurface(
                     shape = CircleShape,
                     cornerRadiusDp = 28.dp,
-                    tintOverride = Color(0xFF141824),
+                    darkFrostedOverride = true,
                     onClick = {
                         viewModel.loadExif(currentPhoto)
                         showExifSheet = true
@@ -295,7 +309,7 @@ fun PhotoViewerScreen(
                     LiquidGlassSurface(
                         shape = CircleShape,
                         cornerRadiusDp = 28.dp,
-                        tintOverride = Color(0xFF141824),
+                        darkFrostedOverride = true,
                         onClick = { showEditAppDialog = true },
                         modifier = Modifier.testTag("viewer_edit_button")
                     ) {
@@ -319,6 +333,7 @@ fun PhotoViewerScreen(
                     }
                 }
             }
+        }
         }
     }
 
@@ -624,7 +639,7 @@ private fun ZoomablePhotoPage(
             LiquidGlassSurface(
                 shape = CircleShape,
                 cornerRadiusDp = 36.dp,
-                tintOverride = Color(0xFF141824),
+                darkFrostedOverride = true,
                 onClick = onPlayVideo,
                 modifier = Modifier
                     .size(72.dp)

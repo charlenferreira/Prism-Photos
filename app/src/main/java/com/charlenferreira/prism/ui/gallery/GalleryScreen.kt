@@ -12,13 +12,16 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -70,6 +73,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,6 +87,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -109,14 +114,19 @@ import com.charlenferreira.prism.R
 import com.charlenferreira.prism.data.model.PhotoItem
 import com.charlenferreira.prism.data.repository.SettingsRepository
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
-import com.charlenferreira.prism.ui.components.liquidGlassBlurLayer
+import com.charlenferreira.prism.ui.components.LocalPrismBackdrop
+import com.charlenferreira.prism.ui.components.PrismBackdropState
+import com.charlenferreira.prism.ui.components.ProgressiveTopBlurScrim
+import com.charlenferreira.prism.ui.components.prismBackdropSource
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
 import java.util.Locale
 
 @Composable
 fun GalleryScreen(
     viewModel: GalleryViewModel,
-    onPhotoClick: (Long) -> Unit
+    onPhotoClick: (Long) -> Unit,
+    sharedBackdropState: PrismBackdropState? = null,
+    onScrollTick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -125,33 +135,38 @@ fun GalleryScreen(
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val rawFilterActive by viewModel.rawFilterEnabled.collectAsStateWithLifecycle()
     var isFilterMenuExpanded by remember { mutableStateOf(false) }
-    var isHeaderVisible by remember { mutableStateOf(true) }
+    var isScrolledFloating by remember { mutableStateOf(false) }
     val gridState = rememberLazyGridState()
+    val backdropState = sharedBackdropState ?: LocalPrismBackdrop.current
 
-    val headerScrollConnection = remember(gridState) {
+    // Notify shared backdrop draw phase on scroll without causing recompositions
+    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
+        onScrollTick?.invoke()
+        if (gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset <= 18) {
+            isScrolledFloating = false
+        }
+    }
+
+    // NestedScrollConnection detects gallery scroll to hide the status/info counter pill
+    // and transition filter/grid controls into a floating frosted blur state with top gradient.
+    val galleryScrollConnection = remember(gridState) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 val dy = available.y
-                if (dy < -8f && (gridState.firstVisibleItemIndex > 0 ||
+                if (dy < -6f && (gridState.firstVisibleItemIndex > 0 ||
                         gridState.firstVisibleItemScrollOffset > 20)
                 ) {
-                    if (isHeaderVisible) {
-                        isHeaderVisible = false
+                    if (!isScrolledFloating) {
+                        isScrolledFloating = true
                         isFilterMenuExpanded = false
                     }
-                } else if (dy > 8f) {
-                    if (!isHeaderVisible) {
-                        isHeaderVisible = true
+                } else if (dy > 10f) {
+                    if (isScrolledFloating) {
+                        isScrolledFloating = false
                     }
                 }
                 return Offset.Zero
             }
-        }
-    }
-
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
-        if (gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset < 16) {
-            isHeaderVisible = true
         }
     }
 
@@ -183,87 +198,111 @@ fun GalleryScreen(
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (isScrolledFloating) 1f else 0.42f,
+        animationSpec = spring(dampingRatio = 0.88f, stiffness = 420f),
+        label = "topBlurScrimAlpha"
+    )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .nestedScroll(headerScrollConnection)
+            .nestedScroll(galleryScrollConnection)
     ) {
-        // Full-bleed gallery content extending under the floating top controls
-        when (val state = uiState) {
-            GalleryUiState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.primary,
-                        strokeWidth = 3.dp
-                    )
+        // Layer 1: Backdrop-recorded full-bleed gallery grid (no LiquidGlassSurface children inside)
+        val gridContainerModifier = if (backdropState != null) {
+            Modifier
+                .fillMaxSize()
+                .prismBackdropSource(backdropState)
+        } else {
+            Modifier.fillMaxSize()
+        }
+
+        Box(modifier = gridContainerModifier) {
+            when (val state = uiState) {
+                GalleryUiState.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 3.dp
+                        )
+                    }
                 }
-            }
 
-            GalleryUiState.PermissionRequest -> {
-                PermissionRequestCard(
-                    onRequestPermission = {
-                        permissionLauncher.launch(requiredMediaPermissions())
-                    },
-                    onOpenSettings = {
-                        val intent = Intent(
-                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                            Uri.fromParts("package", context.packageName, null)
-                        )
-                        context.startActivity(intent)
-                    }
-                )
-            }
-
-            is GalleryUiState.Error -> {
-                GalleryStatusCard(
-                    icon = Icons.Rounded.BrokenImage,
-                    title = stringResource(R.string.error_title),
-                    subtitle = state.message,
-                    actionLabel = stringResource(R.string.retry_button),
-                    onAction = { viewModel.refreshMedia() }
-                )
-            }
-
-            is GalleryUiState.Empty -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = statusBarTopPadding + 70.dp)
-                ) {
-                    if (state.isPartialAccess) {
-                        PartialAccessBanner(
-                            onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
-                        )
-                    }
-                    GalleryStatusCard(
-                        icon = Icons.Rounded.PhotoLibrary,
-                        title = stringResource(
-                            if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
-                        ),
-                        subtitle = stringResource(
-                            if (state.isRawFilterActive) R.string.empty_raw_description else R.string.empty_description
-                        ),
-                        actionLabel = if (state.isRawFilterActive) {
-                            stringResource(R.string.filter_all_media)
-                        } else {
-                            stringResource(R.string.retry_button)
-                        },
-                        onAction = {
-                            if (state.isRawFilterActive) {
-                                viewModel.toggleRawFilter()
-                            } else {
-                                viewModel.refreshMedia()
+                GalleryUiState.PermissionRequest -> {
+                    CompositionLocalProvider(LocalPrismBackdrop provides null) {
+                        PermissionRequestCard(
+                            onRequestPermission = {
+                                permissionLauncher.launch(requiredMediaPermissions())
+                            },
+                            onOpenSettings = {
+                                val intent = Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null)
+                                )
+                                context.startActivity(intent)
                             }
-                        }
-                    )
+                        )
+                    }
                 }
-            }
 
-            is GalleryUiState.Success -> {
-                Box(modifier = Modifier.fillMaxSize()) {
+                is GalleryUiState.Error -> {
+                    CompositionLocalProvider(LocalPrismBackdrop provides null) {
+                        GalleryStatusCard(
+                            icon = Icons.Rounded.BrokenImage,
+                            title = stringResource(R.string.error_title),
+                            subtitle = state.message,
+                            actionLabel = stringResource(R.string.retry_button),
+                            onAction = { viewModel.refreshMedia() }
+                        )
+                    }
+                }
+
+                is GalleryUiState.Empty -> {
+                    CompositionLocalProvider(LocalPrismBackdrop provides null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = statusBarTopPadding + 70.dp)
+                        ) {
+                            if (state.isPartialAccess) {
+                                PartialAccessBanner(
+                                    onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
+                                )
+                            }
+                            GalleryStatusCard(
+                                icon = Icons.Rounded.PhotoLibrary,
+                                title = stringResource(
+                                    if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
+                                ),
+                                subtitle = stringResource(
+                                    if (state.isRawFilterActive) {
+                                        R.string.empty_raw_description
+                                    } else {
+                                        R.string.empty_description
+                                    }
+                                ),
+                                actionLabel = if (state.isRawFilterActive) {
+                                    stringResource(R.string.filter_all_media)
+                                } else {
+                                    stringResource(R.string.retry_button)
+                                },
+                                onAction = {
+                                    if (state.isRawFilterActive) {
+                                        viewModel.toggleRawFilter()
+                                    } else {
+                                        viewModel.refreshMedia()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                is GalleryUiState.Success -> {
                     PinchablePhotoGrid(
                         photos = state.photos,
                         gridState = gridState,
@@ -275,82 +314,68 @@ fun GalleryScreen(
                         },
                         onPhotoClick = onPhotoClick
                     )
-                    if (state.isPartialAccess) {
-                        AnimatedVisibility(
-                            visible = isHeaderVisible,
-                            enter = fadeIn(tween(180)) + slideInVertically { -it },
-                            exit = fadeOut(tween(150)) + slideOutVertically { -it },
-                            modifier = Modifier
-                                .align(Alignment.TopCenter)
-                                .padding(top = statusBarTopPadding + 68.dp)
-                        ) {
-                            PartialAccessBanner(
-                                onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
-                            )
-                        }
-                    }
                 }
             }
         }
 
-        // Top black-to-transparent blur gradient + floating counter & filter bubbles (auto-hides on scroll)
-        AnimatedVisibility(
-            visible = isHeaderVisible,
-            enter = fadeIn(tween(200)) + slideInVertically(
-                animationSpec = spring(dampingRatio = 0.82f, stiffness = 420f)
-            ) { -it },
-            exit = fadeOut(tween(160)) + slideOutVertically(
-                animationSpec = spring(dampingRatio = 0.85f, stiffness = 460f)
-            ) { -it },
-            modifier = Modifier.align(Alignment.TopCenter)
-        ) {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                // Soft top blur + black-to-transparent gradient fading smoothly toward bottom
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(statusBarTopPadding + 104.dp)
-                        .liquidGlassBlurLayer(radius = 22f)
-                        .background(
-                            Brush.verticalGradient(
-                                0.0f to Color.Black.copy(alpha = 0.62f),
-                                0.52f to Color.Black.copy(alpha = 0.24f),
-                                1.0f to Color.Transparent
-                            )
-                        )
-                )
-
-                FloatingGalleryControls(
-                    uiState = uiState,
-                    rawFilterActive = rawFilterActive,
-                    gridColumns = gridColumns,
-                    onToggleDensity = { viewModel.toggleGridDensity() },
-                    onFilterIconClick = { isFilterMenuExpanded = !isFilterMenuExpanded },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.statusBars)
+        // Layer 2: Partial access banner (sibling overlay so it sits cleanly above the grid)
+        val successState = uiState as? GalleryUiState.Success
+        if (successState?.isPartialAccess == true) {
+            AnimatedVisibility(
+                visible = !isScrolledFloating,
+                enter = fadeIn(tween(180)) + slideInVertically { -it },
+                exit = fadeOut(tween(140)) + slideOutVertically { -it },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = statusBarTopPadding + 68.dp)
+            ) {
+                PartialAccessBanner(
+                    onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
                 )
             }
         }
 
-        // Compact floating corner filter popover
+        // Layer 3: Progressive backdrop blur + black-to-transparent top gradient scrim
+        ProgressiveTopBlurScrim(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(statusBarTopPadding + 104.dp)
+                .graphicsLayer { alpha = scrimAlpha }
+        )
+
+        // Layer 4: Status/Info pill (auto-hides on scroll) + Floating filter/density controls
+        FloatingGalleryControls(
+            uiState = uiState,
+            rawFilterActive = rawFilterActive,
+            gridColumns = gridColumns,
+            isScrolledFloating = isScrolledFloating,
+            onToggleDensity = { viewModel.toggleGridDensity() },
+            onFilterIconClick = { isFilterMenuExpanded = !isFilterMenuExpanded },
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars)
+        )
+
+        // Layer 5: Compact floating corner filter popover
         AnimatedVisibility(
-            visible = isFilterMenuExpanded && isHeaderVisible,
-            enter = fadeIn(tween(160)) +
+            visible = isFilterMenuExpanded,
+            enter = fadeIn(tween(150)) +
                 scaleIn(
                     initialScale = 0.88f,
                     transformOrigin = TransformOrigin(1f, 0f),
-                    animationSpec = spring(dampingRatio = 0.78f, stiffness = 460f)
+                    animationSpec = spring(dampingRatio = 0.80f, stiffness = 480f)
                 ) +
                 expandVertically(
                     expandFrom = Alignment.Top,
-                    animationSpec = spring(dampingRatio = 0.80f, stiffness = 460f)
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 480f)
                 ),
             exit = fadeOut(tween(120)) +
                 scaleOut(
                     targetScale = 0.90f,
                     transformOrigin = TransformOrigin(1f, 0f),
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 480f)
+                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 500f)
                 ) +
                 shrinkVertically(shrinkTowards = Alignment.Top),
             modifier = Modifier
@@ -397,6 +422,7 @@ private fun FloatingGalleryControls(
     uiState: GalleryUiState,
     rawFilterActive: Boolean,
     gridColumns: Int,
+    isScrolledFloating: Boolean,
     onToggleDensity: () -> Unit,
     onFilterIconClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -414,35 +440,64 @@ private fun FloatingGalleryControls(
         else -> "${gridColumns}×"
     }
 
-    Row(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+    val controlsScale by animateFloatAsState(
+        targetValue = if (isScrolledFloating) 0.95f else 1f,
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
+        label = "floatingControlsScale"
+    )
+    val filterClusterPadding by animateDpAsState(
+        targetValue = if (isScrolledFloating) 4.dp else 10.dp,
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
+        label = "floatingClusterGap"
+    )
+
+    Box(
+        modifier = modifier.padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        LiquidGlassSurface(
-            shape = CircleShape,
-            cornerRadiusDp = 20.dp
+        // Left status/info counter pill — hides cleanly on downward scroll via NestedScrollConnection
+        AnimatedVisibility(
+            visible = !isScrolledFloating,
+            enter = fadeIn(tween(180)) +
+                slideInVertically(spring(dampingRatio = 0.84f, stiffness = 440f)) { -it / 2 } +
+                expandHorizontally(expandFrom = Alignment.Start),
+            exit = fadeOut(tween(130)) +
+                slideOutVertically(spring(dampingRatio = 0.86f, stiffness = 480f)) { -it / 2 } +
+                shrinkHorizontally(shrinkTowards = Alignment.Start),
+            modifier = Modifier.align(Alignment.CenterStart)
         ) {
-            AnimatedContent(
-                targetState = counterText,
-                transitionSpec = {
-                    fadeIn(tween(150)) togetherWith fadeOut(tween(120))
-                },
-                label = "counterPillTransition"
-            ) { text ->
-                Text(
-                    text = text,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
-                )
+            LiquidGlassSurface(
+                shape = CircleShape,
+                cornerRadiusDp = 20.dp,
+                modifier = Modifier.testTag("gallery_info_status_pill")
+            ) {
+                AnimatedContent(
+                    targetState = counterText,
+                    transitionSpec = {
+                        fadeIn(tween(140)) togetherWith fadeOut(tween(110))
+                    },
+                    label = "counterPillTransition"
+                ) { text ->
+                    Text(
+                        text = text,
+                        fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                    )
+                }
             }
         }
 
+        // Right controls: transition seamlessly into a compact floating frosted state when scrolled
         Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(filterClusterPadding),
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .graphicsLayer {
+                    scaleX = controlsScale
+                    scaleY = controlsScale
+                }
         ) {
             LiquidGlassSurface(
                 shape = CircleShape,
@@ -457,10 +512,10 @@ private fun FloatingGalleryControls(
                     AnimatedContent(
                         targetState = isCompactDensity,
                         transitionSpec = {
-                            (fadeIn(tween(160)) + scaleIn(
-                                initialScale = 0.76f,
-                                animationSpec = spring(dampingRatio = 0.74f, stiffness = 460f)
-                            )) togetherWith (fadeOut(tween(110)) + scaleOut(targetScale = 0.76f))
+                            (fadeIn(tween(150)) + scaleIn(
+                                initialScale = 0.78f,
+                                animationSpec = spring(dampingRatio = 0.80f, stiffness = 500f)
+                            )) togetherWith (fadeOut(tween(100)) + scaleOut(targetScale = 0.78f))
                         },
                         label = "densityFabIconTransition"
                     ) { compact ->
@@ -608,6 +663,7 @@ private fun PinchablePhotoGrid(
     onGridColumnsChanged: (Int) -> Unit,
     onPhotoClick: (Long) -> Unit
 ) {
+    val prismColors = LocalPrismColors.current
     var currentColumnsState by remember { mutableStateOf(gridColumns) }
     LaunchedEffect(gridColumns) {
         currentColumnsState = gridColumns
@@ -625,14 +681,23 @@ private fun PinchablePhotoGrid(
     }
     val animatedSpacing by animateDpAsState(
         targetValue = targetSpacing,
-        animationSpec = spring(dampingRatio = 0.80f, stiffness = 380f),
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
         label = "gridSpacingAnim"
     )
     val animatedCornerRadius by animateDpAsState(
         targetValue = targetCornerRadius,
-        animationSpec = spring(dampingRatio = 0.80f, stiffness = 380f),
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
         label = "gridCornerAnim"
     )
+    val borderBrush = remember(prismColors.glassBorderStart, prismColors.glassBorderEnd) {
+        Brush.linearGradient(
+            colors = listOf(
+                prismColors.glassBorderStart.copy(alpha = 0.42f),
+                Color.Transparent,
+                prismColors.glassBorderEnd.copy(alpha = 0.30f)
+            )
+        )
+    }
 
     LazyVerticalGrid(
         state = gridState,
@@ -692,13 +757,14 @@ private fun PinchablePhotoGrid(
             PhotoGridTile(
                 photo = photo,
                 cornerRadius = animatedCornerRadius,
+                borderBrush = borderBrush,
                 onClick = { onPhotoClick(photo.id) },
                 modifier = Modifier.animateItem(
-                    fadeInSpec = tween(180),
-                    fadeOutSpec = tween(140),
+                    fadeInSpec = tween(160),
+                    fadeOutSpec = tween(120),
                     placementSpec = spring<IntOffset>(
-                        dampingRatio = 0.80f,
-                        stiffness = 380f
+                        dampingRatio = 0.84f,
+                        stiffness = 420f
                     )
                 )
             )
@@ -710,12 +776,19 @@ private fun PinchablePhotoGrid(
 private fun PhotoGridTile(
     photo: PhotoItem,
     cornerRadius: Dp,
+    borderBrush: Brush,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val prismColors = LocalPrismColors.current
-    val tileShape = RoundedCornerShape(cornerRadius)
+    val tileShape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
+    val imageRequest = remember(photo.id, photo.uri) {
+        ImageRequest.Builder(context)
+            .data(photo.uri)
+            .crossfade(80)
+            .build()
+    }
 
     Box(
         modifier = modifier
@@ -724,23 +797,14 @@ private fun PhotoGridTile(
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
             .border(
                 width = 0.75.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        prismColors.glassBorderStart.copy(alpha = 0.45f),
-                        Color.Transparent,
-                        prismColors.glassBorderEnd.copy(alpha = 0.35f)
-                    )
-                ),
+                brush = borderBrush,
                 shape = tileShape
             )
             .clickable(onClick = onClick)
             .testTag("photo_tile_${photo.id}")
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(photo.uri)
-                .crossfade(true)
-                .build(),
+            model = imageRequest,
             contentDescription = photo.displayName,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize()

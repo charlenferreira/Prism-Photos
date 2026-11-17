@@ -42,15 +42,21 @@ jobs:
           sed -i "s/versionCode = .*/versionCode = ${{ github.run_number }}/" app/build.gradle.kts
           sed -i "s/versionName = \".*\"/versionName = \"1.0.${{ github.run_number }}\"/" app/build.gradle.kts
 
-      - name: Decodificar Keystore Fixa
+      - name: Preparar Keystore Fixa para debugConfig
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/prism.keystore
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > prism.keystore
+          keytool -importkeystore \
+            -srckeystore prism.keystore \
+            -srcstorepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -srcalias "${{ secrets.KEY_ALIAS }}" \
+            -srckeypass "${{ secrets.KEY_PASSWORD }}" \
+            -destkeystore debug.keystore \
+            -deststorepass android \
+            -destalias androiddebugkey \
+            -destkeypass android \
+            -noprompt
 
       - name: Build Debug APK
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           ./gradlew assembleDebug -Djava.awt.headless=true --no-daemon --stacktrace
 

@@ -63,7 +63,14 @@ jobs:
           fi
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug -Djava.awt.headless=true --no-daemon --stacktrace
+        run:    - name: Decodificar Keystore Fixa
+     run: |
+       echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/prism.keystore
+     env:
+       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+./gradlew assembleDebug -Djava.awt.headless=true --no-daemon --stacktrace
 
       - name: Rename and stage APK artifact
         run: |

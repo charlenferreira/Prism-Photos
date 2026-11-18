@@ -3,6 +3,7 @@ package com.charlenferreira.prism
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -48,6 +49,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.attributes = window.attributes.apply {
+                preferredRefreshRate = 60f
+            }
+        }
         enableEdgeToEdge()
         setContent {
             val selectedTheme by settingsViewModel.theme.collectAsStateWithLifecycle()
@@ -106,7 +112,6 @@ private fun UpdateAvailableDialog(
                     try {
                         context.startActivity(intent)
                     } catch (_: ActivityNotFoundException) {
-                        // Ignore if no browser is installed
                     }
                     onDismiss()
                 },

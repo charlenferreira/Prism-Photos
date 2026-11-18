@@ -14,27 +14,27 @@ enum class PrismTheme(
 ) {
     BEIGE(
         displayName = "Bege",
-        subtitle = "Areia & creme suave",
-        swatchPrimary = Color(0xFFF5ECE0),
-        swatchSecondary = Color(0xFFC7A27C)
+        subtitle = "Areia quente & creme suave",
+        swatchPrimary = Color(0xFFF4EAE0),
+        swatchSecondary = Color(0xFFC5A888)
     ),
     WHITE(
         displayName = "Branco",
-        subtitle = "Branco puro iOS",
+        subtitle = "Branco puro estilo iOS",
         swatchPrimary = Color(0xFFFFFFFF),
-        swatchSecondary = Color(0xFFD8E4F8)
+        swatchSecondary = Color(0xFFE5E7EB)
     ),
     AMOLED_BLACK(
         displayName = "Preto",
-        subtitle = "#000000 AMOLED",
+        subtitle = "Preto puro #000000 AMOLED",
         swatchPrimary = Color(0xFF000000),
-        swatchSecondary = Color(0xFF24262C)
+        swatchSecondary = Color(0xFF262629)
     ),
     LIGHT_GRAY(
         displayName = "Cinza Claro",
-        subtitle = "Papel & alumínio suave",
-        swatchPrimary = Color(0xFFEBECEF),
-        swatchSecondary = Color(0xFFBFC4CE)
+        subtitle = "Papel fosco & alumínio suave",
+        swatchPrimary = Color(0xFFECEEF2),
+        swatchSecondary = Color(0xFFB8BEC9)
     )
 }
 
@@ -54,133 +54,127 @@ data class PrismExtendedColors(
     val isDarkSurface: Boolean
 )
 
-fun getColorScheme(theme: PrismTheme, @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = false): ColorScheme {
+fun getColorScheme(theme: PrismTheme, darkTheme: Boolean): ColorScheme {
     return when (theme) {
         PrismTheme.BEIGE -> lightColorScheme(
-            primary = Color(0xFF8C6444),
+            primary = Color(0xFF7D5A38),
             onPrimary = Color(0xFFFFFFFF),
-            primaryContainer = Color(0xFFF0DFCA),
-            onPrimaryContainer = Color(0xFF331F10),
-            secondary = Color(0xFFA88263),
+            primaryContainer = Color(0xFFEBD9C5),
+            onPrimaryContainer = Color(0xFF2E1E0E),
+            secondary = Color(0xFF6E5D4F),
             onSecondary = Color(0xFFFFFFFF),
-            background = Color(0xFFF5ECE0),
-            onBackground = Color(0xFF261B12),
-            surface = Color(0xFFFAF3EA),
-            onSurface = Color(0xFF261B12),
-            surfaceVariant = Color(0xFFEBE0D0),
-            onSurfaceVariant = Color(0xFF665242),
-            outline = Color(0xFFD2BFA8)
+            background = Color(0xFFF6EFE7),
+            onBackground = Color(0xFF211A14),
+            surface = Color(0xFFF6EFE7),
+            onSurface = Color(0xFF211A14),
+            surfaceVariant = Color(0xFFE9DEC9),
+            onSurfaceVariant = Color(0xFF52463B),
+            outline = Color(0xFF8A7B6D)
         )
-
         PrismTheme.WHITE -> lightColorScheme(
             primary = Color(0xFF007AFF),
             onPrimary = Color(0xFFFFFFFF),
-            primaryContainer = Color(0xFFE3F0FF),
-            onPrimaryContainer = Color(0xFF002652),
-            secondary = Color(0xFF5878A8),
+            primaryContainer = Color(0xFFE1F0FF),
+            onPrimaryContainer = Color(0xFF001D36),
+            secondary = Color(0xFF5856D6),
             onSecondary = Color(0xFFFFFFFF),
             background = Color(0xFFFFFFFF),
-            onBackground = Color(0xFF111318),
+            onBackground = Color(0xFF111113),
             surface = Color(0xFFFFFFFF),
-            onSurface = Color(0xFF111318),
-            surfaceVariant = Color(0xFFF2F4F8),
-            onSurfaceVariant = Color(0xFF5A6270),
-            outline = Color(0xFFD7DCE6)
+            onSurface = Color(0xFF111113),
+            surfaceVariant = Color(0xFFF2F2F7),
+            onSurfaceVariant = Color(0xFF48484A),
+            outline = Color(0xFFAEAEB2)
         )
-
         PrismTheme.AMOLED_BLACK -> darkColorScheme(
             primary = Color(0xFF0A84FF),
             onPrimary = Color(0xFFFFFFFF),
-            primaryContainer = Color(0xFF181B22),
-            onPrimaryContainer = Color(0xFFE8F1FF),
-            secondary = Color(0xFF9BA8C2),
-            onSecondary = Color(0xFF0A0C10),
+            primaryContainer = Color(0xFF1C2B3D),
+            onPrimaryContainer = Color(0xFFD6E7FF),
+            secondary = Color(0xFF8E8E93),
+            onSecondary = Color(0xFF000000),
             background = Color(0xFF000000),
-            onBackground = Color(0xFFF7F8FA),
+            onBackground = Color(0xFFF5F5F7),
             surface = Color(0xFF000000),
-            onSurface = Color(0xFFF7F8FA),
-            surfaceVariant = Color(0xFF121318),
-            onSurfaceVariant = Color(0xFFA4AAB8),
-            outline = Color(0xFF2A2C34)
+            onSurface = Color(0xFFF5F5F7),
+            surfaceVariant = Color(0xFF161618),
+            onSurfaceVariant = Color(0xFFA1A1A6),
+            outline = Color(0xFF3A3A3C)
         )
-
         PrismTheme.LIGHT_GRAY -> lightColorScheme(
-            primary = Color(0xFF3A6AE0),
+            primary = Color(0xFF2C3E50),
             onPrimary = Color(0xFFFFFFFF),
-            primaryContainer = Color(0xFFDFE6F5),
-            onPrimaryContainer = Color(0xFF14244A),
-            secondary = Color(0xFF6B7486),
+            primaryContainer = Color(0xFFD9E1E8),
+            onPrimaryContainer = Color(0xFF141D26),
+            secondary = Color(0xFF5A6572),
             onSecondary = Color(0xFFFFFFFF),
-            background = Color(0xFFEBECEF),
-            onBackground = Color(0xFF181B20),
-            surface = Color(0xFFF3F4F6),
-            onSurface = Color(0xFF181B20),
-            surfaceVariant = Color(0xFFDFE2E8),
-            onSurfaceVariant = Color(0xFF545B68),
-            outline = Color(0xFFC5CAD4)
+            background = Color(0xFFECEEF2),
+            onBackground = Color(0xFF181A1F),
+            surface = Color(0xFFECEEF2),
+            onSurface = Color(0xFF181A1F),
+            surfaceVariant = Color(0xFFDFE3EA),
+            onSurfaceVariant = Color(0xFF4A505A),
+            outline = Color(0xFF98A0AC)
         )
     }
 }
 
-fun getExtendedColors(theme: PrismTheme, @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = false): PrismExtendedColors {
+fun getExtendedColors(theme: PrismTheme, darkTheme: Boolean): PrismExtendedColors {
     return when (theme) {
         PrismTheme.BEIGE -> PrismExtendedColors(
-            backgroundTop = Color(0xFFF7EFE4),
-            backgroundBottom = Color(0xFFEDE0CE),
-            ambientOrbPrimary = Color.Transparent,
-            ambientOrbSecondary = Color.Transparent,
-            glassFillTop = Color(0xCCFFFBF5),
-            glassFillBottom = Color(0xB3F5E9D9),
-            glassBorderStart = Color(0xE6FFFFFF),
-            glassBorderMid = Color(0x55E0C9AE),
-            glassBorderEnd = Color(0x80C7AA8A),
-            rawBadgeContainer = Color(0xE68C6444),
-            rawBadgeContent = Color(0xFFFFFFFF),
+            backgroundTop = Color(0xFFF6EFE7),
+            backgroundBottom = Color(0xFFEDE2D4),
+            ambientOrbPrimary = Color(0xFFDCC3A6).copy(alpha = 0.28f),
+            ambientOrbSecondary = Color(0xFFE6D2BC).copy(alpha = 0.24f),
+            glassFillTop = Color(0xFFFDF9F4).copy(alpha = 0.86f),
+            glassFillBottom = Color(0xFFF2E7DA).copy(alpha = 0.76f),
+            glassBorderStart = Color.White.copy(alpha = 0.90f),
+            glassBorderMid = Color(0xFFC5A888).copy(alpha = 0.24f),
+            glassBorderEnd = Color(0xFF9C8269).copy(alpha = 0.34f),
+            rawBadgeContainer = Color(0xFF7D5A38).copy(alpha = 0.92f),
+            rawBadgeContent = Color.White,
             isDarkSurface = false
         )
-
         PrismTheme.WHITE -> PrismExtendedColors(
             backgroundTop = Color(0xFFFFFFFF),
-            backgroundBottom = Color(0xFFF7F8FA),
-            ambientOrbPrimary = Color.Transparent,
-            ambientOrbSecondary = Color.Transparent,
-            glassFillTop = Color(0xCCFFFFFF),
-            glassFillBottom = Color(0xB3F2F5FA),
-            glassBorderStart = Color(0xF0FFFFFF),
-            glassBorderMid = Color(0x5CD0DAE8),
-            glassBorderEnd = Color(0x85B5C2D6),
-            rawBadgeContainer = Color(0xE6007AFF),
-            rawBadgeContent = Color(0xFFFFFFFF),
+            backgroundBottom = Color(0xFFF5F6F8),
+            ambientOrbPrimary = Color(0xFFD6E6FF).copy(alpha = 0.26f),
+            ambientOrbSecondary = Color(0xFFE8ECF2).copy(alpha = 0.24f),
+            glassFillTop = Color(0xFFFFFFFF).copy(alpha = 0.88f),
+            glassFillBottom = Color(0xFFF4F5F7).copy(alpha = 0.78f),
+            glassBorderStart = Color.White.copy(alpha = 0.96f),
+            glassBorderMid = Color(0xFF007AFF).copy(alpha = 0.14f),
+            glassBorderEnd = Color(0xFFC7C7CC).copy(alpha = 0.42f),
+            rawBadgeContainer = Color(0xFF1C1C1E).copy(alpha = 0.84f),
+            rawBadgeContent = Color.White,
             isDarkSurface = false
         )
-
         PrismTheme.AMOLED_BLACK -> PrismExtendedColors(
             backgroundTop = Color(0xFF000000),
             backgroundBottom = Color(0xFF000000),
             ambientOrbPrimary = Color.Transparent,
             ambientOrbSecondary = Color.Transparent,
-            glassFillTop = Color(0x991C1E24),
-            glassFillBottom = Color(0x880E1014),
-            glassBorderStart = Color(0x4DFFFFFF),
-            glassBorderMid = Color(0x1EFFFFFF),
-            glassBorderEnd = Color(0x33A6B0C8),
-            rawBadgeContainer = Color(0xE60A84FF),
-            rawBadgeContent = Color(0xFFFFFFFF),
+            glassFillTop = Color(0xFF1C1C1E).copy(alpha = 0.82f),
+            glassFillBottom = Color(0xFF121214).copy(alpha = 0.74f),
+            glassBorderStart = Color.White.copy(alpha = 0.26f),
+            glassBorderMid = Color.White.copy(alpha = 0.10f),
+            glassBorderEnd = Color.White.copy(alpha = 0.18f),
+            rawBadgeContainer = Color(0xFF2C2C2E).copy(alpha = 0.90f),
+            rawBadgeContent = Color.White,
             isDarkSurface = true
         )
-
         PrismTheme.LIGHT_GRAY -> PrismExtendedColors(
-            backgroundTop = Color(0xFFEBECEF),
-            backgroundBottom = Color(0xFFE2E4E9),
-            ambientOrbPrimary = Color.Transparent,
-            ambientOrbSecondary = Color.Transparent,
-            glassFillTop = Color(0xCCF7F8FA),
-            glassFillBottom = Color(0xB3E8EAEF),
-            glassBorderStart = Color(0xEBFFFFFF),
-            glassBorderMid = Color(0x5CC6CBD6),
-            glassBorderEnd = Color(0x85ADB4C2),
-            rawBadgeContainer = Color(0xE63A6AE0),
-            rawBadgeContent = Color(0xFFFFFFFF),
+            backgroundTop = Color(0xFFECEEF2),
+            backgroundBottom = Color(0xFFE2E5EC),
+            ambientOrbPrimary = Color(0xFFD0D6E2).copy(alpha = 0.28f),
+            ambientOrbSecondary = Color(0xFFDAE0EA).copy(alpha = 0.24f),
+            glassFillTop = Color(0xFFF7F8FA).copy(alpha = 0.86f),
+            glassFillBottom = Color(0xFFE6E9F0).copy(alpha = 0.76f),
+            glassBorderStart = Color.White.copy(alpha = 0.92f),
+            glassBorderMid = Color(0xFF5A6572).copy(alpha = 0.16f),
+            glassBorderEnd = Color(0xFF98A0AC).copy(alpha = 0.38f),
+            rawBadgeContainer = Color(0xFF2C3E50).copy(alpha = 0.90f),
+            rawBadgeContent = Color.White,
             isDarkSurface = false
         )
     }

@@ -3,6 +3,8 @@ package com.charlenferreira.prism.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.charlenferreira.prism.data.repository.LiquidGlassConfig
+import com.charlenferreira.prism.data.repository.LiquidGlassPreset
 import com.charlenferreira.prism.data.repository.SettingsRepository
 import com.charlenferreira.prism.data.repository.UpdateInfo
 import com.charlenferreira.prism.data.repository.UpdateRepository
@@ -22,13 +24,19 @@ class SettingsViewModel(
     val theme: StateFlow<PrismTheme> = settingsRepository.themeFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = PrismTheme.DYNAMIC
+        initialValue = PrismTheme.WHITE
     )
 
     val gridColumns: StateFlow<Int> = settingsRepository.gridColumnsFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = SettingsRepository.DEFAULT_GRID_COLUMNS
+    )
+
+    val glassConfig: StateFlow<LiquidGlassConfig> = settingsRepository.glassConfigFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = LiquidGlassConfig()
     )
 
     private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
@@ -53,6 +61,18 @@ class SettingsViewModel(
     fun selectGridColumns(columns: Int) {
         viewModelScope.launch {
             settingsRepository.setGridColumns(columns)
+        }
+    }
+
+    fun applyGlassPreset(preset: LiquidGlassPreset) {
+        viewModelScope.launch {
+            settingsRepository.applyGlassPreset(preset)
+        }
+    }
+
+    fun updateGlassConfig(config: LiquidGlassConfig) {
+        viewModelScope.launch {
+            settingsRepository.updateGlassConfig(config)
         }
     }
 

@@ -9,25 +9,11 @@ import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandHorizontally
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -61,10 +47,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BrokenImage
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.GridView
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.ViewComfy
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -73,33 +59,26 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -109,24 +88,27 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
-import coil3.request.crossfade
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.data.model.PhotoItem
 import com.charlenferreira.prism.data.repository.SettingsRepository
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
-import com.charlenferreira.prism.ui.components.LocalPrismBackdrop
 import com.charlenferreira.prism.ui.components.PrismBackdropState
 import com.charlenferreira.prism.ui.components.ProgressiveTopBlurScrim
-import com.charlenferreira.prism.ui.components.prismBackdropSource
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
 import java.util.Locale
+
+private enum class MediaCategoryTab(val label: String) {
+    RAW_DNG("RAW / DNG"),
+    VIDEOS("Vídeos"),
+    PHOTOS("Fotos")
+}
 
 @Composable
 fun GalleryScreen(
     viewModel: GalleryViewModel,
     onPhotoClick: (Long) -> Unit,
-    sharedBackdropState: PrismBackdropState? = null,
-    onScrollTick: (() -> Unit)? = null
+    @Suppress("UNUSED_PARAMETER") sharedBackdropState: PrismBackdropState? = null,
+    @Suppress("UNUSED_PARAMETER") onScrollTick: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -134,39 +116,18 @@ fun GalleryScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val rawFilterActive by viewModel.rawFilterEnabled.collectAsStateWithLifecycle()
+
     var isFilterMenuExpanded by remember { mutableStateOf(false) }
-    var isScrolledFloating by remember { mutableStateOf(false) }
+    // null = exibe todas as mídias; tocar numa aba filtra e tocar de novo limpa o filtro
+    var selectedCategory by rememberSaveable { mutableStateOf<MediaCategoryTab?>(null) }
     val gridState = rememberLazyGridState()
-    val backdropState = sharedBackdropState ?: LocalPrismBackdrop.current
 
-    // Notify shared backdrop draw phase on scroll without causing recompositions
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset) {
-        onScrollTick?.invoke()
-        if (gridState.firstVisibleItemIndex == 0 && gridState.firstVisibleItemScrollOffset <= 18) {
-            isScrolledFloating = false
-        }
-    }
-
-    // NestedScrollConnection detects gallery scroll to hide the status/info counter pill
-    // and transition filter/grid controls into a floating frosted blur state with top gradient.
-    val galleryScrollConnection = remember(gridState) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                val dy = available.y
-                if (dy < -6f && (gridState.firstVisibleItemIndex > 0 ||
-                        gridState.firstVisibleItemScrollOffset > 20)
-                ) {
-                    if (!isScrolledFloating) {
-                        isScrolledFloating = true
-                        isFilterMenuExpanded = false
-                    }
-                } else if (dy > 10f) {
-                    if (isScrolledFloating) {
-                        isScrolledFloating = false
-                    }
-                }
-                return Offset.Zero
-            }
+    // Sincroniza se o usuário ativar o filtro RAW pelo menu superior
+    LaunchedEffect(rawFilterActive) {
+        if (rawFilterActive) {
+            selectedCategory = MediaCategoryTab.RAW_DNG
+        } else if (selectedCategory == MediaCategoryTab.RAW_DNG) {
+            selectedCategory = null
         }
     }
 
@@ -198,117 +159,117 @@ fun GalleryScreen(
     val statusBarTopPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val navBarBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val scrimAlpha by animateFloatAsState(
-        targetValue = if (isScrolledFloating) 1f else 0.42f,
-        animationSpec = spring(dampingRatio = 0.88f, stiffness = 420f),
-        label = "topBlurScrimAlpha"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(galleryScrollConnection)
-    ) {
-        // Layer 1: Backdrop-recorded full-bleed gallery grid (no LiquidGlassSurface children inside)
-        val gridContainerModifier = if (backdropState != null) {
-            Modifier
-                .fillMaxSize()
-                .prismBackdropSource(backdropState)
-        } else {
-            Modifier.fillMaxSize()
+    // Filtra a lista localmente em memória (zero peso na GPU/banco)
+    val filteredPhotos = remember(uiState, selectedCategory) {
+        val all = (uiState as? GalleryUiState.Success)?.photos.orEmpty()
+        when (selectedCategory) {
+            null -> all
+            MediaCategoryTab.RAW_DNG -> all.filter { it.isRaw }
+            MediaCategoryTab.VIDEOS -> all.filter { it.isVideo }
+            MediaCategoryTab.PHOTOS -> all.filter { !it.isVideo && !it.isRaw }
         }
+    }
 
-        Box(modifier = gridContainerModifier) {
-            when (val state = uiState) {
-                GalleryUiState.Loading -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            strokeWidth = 3.dp
+    Box(modifier = Modifier.fillMaxSize()) {
+        when (val state = uiState) {
+            GalleryUiState.Loading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.5.dp
+                    )
+                }
+            }
+
+            GalleryUiState.PermissionRequest -> {
+                PermissionRequestCard(
+                    onRequestPermission = {
+                        permissionLauncher.launch(requiredMediaPermissions())
+                    },
+                    onOpenSettings = {
+                        val intent = Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null)
+                        )
+                        context.startActivity(intent)
+                    }
+                )
+            }
+
+            is GalleryUiState.Error -> {
+                GalleryStatusCard(
+                    icon = Icons.Rounded.BrokenImage,
+                    title = stringResource(R.string.error_title),
+                    subtitle = state.message,
+                    actionLabel = stringResource(R.string.retry_button),
+                    onAction = { viewModel.refreshMedia() }
+                )
+            }
+
+            is GalleryUiState.Empty -> {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = statusBarTopPadding + 84.dp)
+                ) {
+                    if (state.isPartialAccess) {
+                        PartialAccessBanner(
+                            onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
                         )
                     }
-                }
-
-                GalleryUiState.PermissionRequest -> {
-                    CompositionLocalProvider(LocalPrismBackdrop provides null) {
-                        PermissionRequestCard(
-                            onRequestPermission = {
-                                permissionLauncher.launch(requiredMediaPermissions())
-                            },
-                            onOpenSettings = {
-                                val intent = Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.fromParts("package", context.packageName, null)
-                                )
-                                context.startActivity(intent)
+                    GalleryStatusCard(
+                        icon = Icons.Rounded.PhotoLibrary,
+                        title = stringResource(
+                            if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
+                        ),
+                        subtitle = stringResource(
+                            if (state.isRawFilterActive) {
+                                R.string.empty_raw_description
+                            } else {
+                                R.string.empty_description
                             }
-                        )
-                    }
-                }
-
-                is GalleryUiState.Error -> {
-                    CompositionLocalProvider(LocalPrismBackdrop provides null) {
-                        GalleryStatusCard(
-                            icon = Icons.Rounded.BrokenImage,
-                            title = stringResource(R.string.error_title),
-                            subtitle = state.message,
-                            actionLabel = stringResource(R.string.retry_button),
-                            onAction = { viewModel.refreshMedia() }
-                        )
-                    }
-                }
-
-                is GalleryUiState.Empty -> {
-                    CompositionLocalProvider(LocalPrismBackdrop provides null) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(top = statusBarTopPadding + 70.dp)
-                        ) {
-                            if (state.isPartialAccess) {
-                                PartialAccessBanner(
-                                    onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
-                                )
+                        ),
+                        actionLabel = if (state.isRawFilterActive) {
+                            stringResource(R.string.filter_all_media)
+                        } else {
+                            stringResource(R.string.retry_button)
+                        },
+                        onAction = {
+                            if (state.isRawFilterActive) {
+                                viewModel.toggleRawFilter()
+                            } else {
+                                viewModel.refreshMedia()
                             }
-                            GalleryStatusCard(
-                                icon = Icons.Rounded.PhotoLibrary,
-                                title = stringResource(
-                                    if (state.isRawFilterActive) R.string.empty_raw_title else R.string.empty_title
-                                ),
-                                subtitle = stringResource(
-                                    if (state.isRawFilterActive) {
-                                        R.string.empty_raw_description
-                                    } else {
-                                        R.string.empty_description
-                                    }
-                                ),
-                                actionLabel = if (state.isRawFilterActive) {
-                                    stringResource(R.string.filter_all_media)
-                                } else {
-                                    stringResource(R.string.retry_button)
-                                },
-                                onAction = {
-                                    if (state.isRawFilterActive) {
-                                        viewModel.toggleRawFilter()
-                                    } else {
-                                        viewModel.refreshMedia()
-                                    }
-                                }
-                            )
                         }
-                    }
+                    )
                 }
+            }
 
-                is GalleryUiState.Success -> {
+            is GalleryUiState.Success -> {
+                val topPadding = statusBarTopPadding + if (state.isPartialAccess) 128.dp else 82.dp
+                val bottomPadding = navBarBottomPadding + 144.dp
+
+                if (filteredPhotos.isEmpty()) {
+                    GalleryStatusCard(
+                        icon = Icons.Rounded.PhotoLibrary,
+                        title = "Nenhum item em ${selectedCategory?.label ?: "Fototeca"}",
+                        subtitle = "Toque abaixo para voltar a exibir toda a sua biblioteca.",
+                        actionLabel = "Mostrar tudo",
+                        onAction = {
+                            selectedCategory = null
+                            if (rawFilterActive) viewModel.toggleRawFilter()
+                        }
+                    )
+                } else {
                     PinchablePhotoGrid(
-                        photos = state.photos,
+                        photos = filteredPhotos,
                         gridState = gridState,
                         gridColumns = gridColumns,
-                        topInsetPadding = statusBarTopPadding + if (state.isPartialAccess) 120.dp else 72.dp,
-                        bottomInsetPadding = navBarBottomPadding + 98.dp,
+                        topInsetPadding = topPadding,
+                        bottomInsetPadding = bottomPadding,
                         onGridColumnsChanged = { newColumns ->
                             viewModel.setGridColumns(newColumns)
                         },
@@ -318,16 +279,13 @@ fun GalleryScreen(
             }
         }
 
-        // Layer 2: Partial access banner (sibling overlay so it sits cleanly above the grid)
+        // Banner de acesso parcial
         val successState = uiState as? GalleryUiState.Success
         if (successState?.isPartialAccess == true) {
-            AnimatedVisibility(
-                visible = !isScrolledFloating,
-                enter = fadeIn(tween(180)) + slideInVertically { -it },
-                exit = fadeOut(tween(140)) + slideOutVertically { -it },
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = statusBarTopPadding + 68.dp)
+                    .padding(top = statusBarTopPadding + 78.dp)
             ) {
                 PartialAccessBanner(
                     onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
@@ -335,21 +293,20 @@ fun GalleryScreen(
             }
         }
 
-        // Layer 3: Progressive backdrop blur + black-to-transparent top gradient scrim
+        // Degradê superior suave
         ProgressiveTopBlurScrim(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .height(statusBarTopPadding + 104.dp)
-                .graphicsLayer { alpha = scrimAlpha }
+                .height(statusBarTopPadding + 92.dp)
         )
 
-        // Layer 4: Status/Info pill (auto-hides on scroll) + Floating filter/density controls
-        FloatingGalleryControls(
+        // Cabeçalho estilo Fototeca iOS
+        IosFototecaHeader(
             uiState = uiState,
-            rawFilterActive = rawFilterActive,
+            displayedCount = filteredPhotos.size,
+            selectedCategory = selectedCategory,
             gridColumns = gridColumns,
-            isScrolledFloating = isScrolledFloating,
             onToggleDensity = { viewModel.toggleGridDensity() },
             onFilterIconClick = { isFilterMenuExpanded = !isFilterMenuExpanded },
             modifier = Modifier
@@ -358,56 +315,79 @@ fun GalleryScreen(
                 .windowInsetsPadding(WindowInsets.statusBars)
         )
 
-        // Layer 5: Compact floating corner filter popover
+        // Pílula flutuante de categorias ("RAW / DNG | Vídeos | Fotos")
+        if (uiState is GalleryUiState.Success) {
+            FloatingCategoryPill(
+                selectedCategory = selectedCategory,
+                onSelectCategory = { clicked ->
+                    val next = if (selectedCategory == clicked) null else clicked
+                    selectedCategory = next
+                    if (next != MediaCategoryTab.RAW_DNG && rawFilterActive) {
+                        viewModel.toggleRawFilter()
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = 82.dp)
+            )
+        }
+
+        // Menu flutuante rápido no topo direito
         AnimatedVisibility(
             visible = isFilterMenuExpanded,
-            enter = fadeIn(tween(150)) +
-                scaleIn(
-                    initialScale = 0.88f,
-                    transformOrigin = TransformOrigin(1f, 0f),
-                    animationSpec = spring(dampingRatio = 0.80f, stiffness = 480f)
-                ) +
-                expandVertically(
-                    expandFrom = Alignment.Top,
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 480f)
-                ),
-            exit = fadeOut(tween(120)) +
-                scaleOut(
-                    targetScale = 0.90f,
-                    transformOrigin = TransformOrigin(1f, 0f),
-                    animationSpec = spring(dampingRatio = 0.84f, stiffness = 500f)
-                ) +
-                shrinkVertically(shrinkTowards = Alignment.Top),
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(100)),
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = statusBarTopPadding + 66.dp, end = 16.dp)
+                .padding(top = statusBarTopPadding + 68.dp, end = 16.dp)
         ) {
             LiquidGlassSurface(
-                shape = RoundedCornerShape(22.dp),
-                cornerRadiusDp = 22.dp,
+                shape = RoundedCornerShape(20.dp),
                 modifier = Modifier
-                    .width(216.dp)
+                    .width(210.dp)
                     .testTag("filter_popover_menu")
             ) {
                 Column(
-                    modifier = Modifier.padding(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    modifier = Modifier.padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     FilterPopoverItem(
                         label = stringResource(R.string.filter_all_media),
-                        selected = !rawFilterActive,
+                        selected = selectedCategory == null,
                         testTag = "filter_option_all",
                         onClick = {
+                            selectedCategory = null
                             if (rawFilterActive) viewModel.toggleRawFilter()
                             isFilterMenuExpanded = false
                         }
                     )
                     FilterPopoverItem(
-                        label = stringResource(R.string.filter_raw_only),
-                        selected = rawFilterActive,
+                        label = "Apenas RAW (.dng)",
+                        selected = selectedCategory == MediaCategoryTab.RAW_DNG,
                         testTag = "filter_option_raw",
                         onClick = {
-                            if (!rawFilterActive) viewModel.toggleRawFilter()
+                            selectedCategory = MediaCategoryTab.RAW_DNG
+                            isFilterMenuExpanded = false
+                        }
+                    )
+                    FilterPopoverItem(
+                        label = "Apenas Vídeos",
+                        selected = selectedCategory == MediaCategoryTab.VIDEOS,
+                        testTag = "filter_option_videos",
+                        onClick = {
+                            selectedCategory = MediaCategoryTab.VIDEOS
+                            if (rawFilterActive) viewModel.toggleRawFilter()
+                            isFilterMenuExpanded = false
+                        }
+                    )
+                    FilterPopoverItem(
+                        label = "Apenas Fotos",
+                        selected = selectedCategory == MediaCategoryTab.PHOTOS,
+                        testTag = "filter_option_photos",
+                        onClick = {
+                            selectedCategory = MediaCategoryTab.PHOTOS
+                            if (rawFilterActive) viewModel.toggleRawFilter()
                             isFilterMenuExpanded = false
                         }
                     )
@@ -418,157 +398,159 @@ fun GalleryScreen(
 }
 
 @Composable
-private fun FloatingGalleryControls(
+private fun IosFototecaHeader(
     uiState: GalleryUiState,
-    rawFilterActive: Boolean,
+    displayedCount: Int,
+    selectedCategory: MediaCategoryTab?,
     gridColumns: Int,
-    isScrolledFloating: Boolean,
     onToggleDensity: () -> Unit,
     onFilterIconClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isCompactDensity = gridColumns >= 4
-    val counterText = when (uiState) {
+    val isFiltered = selectedCategory != null
+    val subtitleText = when (uiState) {
         is GalleryUiState.Success -> {
-            val prefix = if (rawFilterActive) "RAW • " else ""
-            "$prefix${uiState.photos.size} itens • ${gridColumns}×"
+            val prefix = if (selectedCategory != null) "${selectedCategory.label} • " else ""
+            "$prefix$displayedCount itens"
         }
-        is GalleryUiState.Empty -> {
-            if (rawFilterActive) "RAW • 0 itens" else "0 itens • ${gridColumns}×"
-        }
-        is GalleryUiState.Loading -> "..."
-        else -> "${gridColumns}×"
+        is GalleryUiState.Empty -> "0 itens"
+        is GalleryUiState.Loading -> "Carregando..."
+        else -> ""
     }
 
-    val controlsScale by animateFloatAsState(
-        targetValue = if (isScrolledFloating) 0.95f else 1f,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
-        label = "floatingControlsScale"
-    )
-    val filterClusterPadding by animateDpAsState(
-        targetValue = if (isScrolledFloating) 4.dp else 10.dp,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 460f),
-        label = "floatingClusterGap"
-    )
-
-    Box(
-        modifier = modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+    Row(
+        modifier = modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        // Left status/info counter pill — hides cleanly on downward scroll via NestedScrollConnection
-        AnimatedVisibility(
-            visible = !isScrolledFloating,
-            enter = fadeIn(tween(180)) +
-                slideInVertically(spring(dampingRatio = 0.84f, stiffness = 440f)) { -it / 2 } +
-                expandHorizontally(expandFrom = Alignment.Start),
-            exit = fadeOut(tween(130)) +
-                slideOutVertically(spring(dampingRatio = 0.86f, stiffness = 480f)) { -it / 2 } +
-                shrinkHorizontally(shrinkTowards = Alignment.Start),
-            modifier = Modifier.align(Alignment.CenterStart)
-        ) {
-            LiquidGlassSurface(
-                shape = CircleShape,
-                cornerRadiusDp = 20.dp,
-                modifier = Modifier.testTag("gallery_info_status_pill")
-            ) {
-                AnimatedContent(
-                    targetState = counterText,
-                    transitionSpec = {
-                        fadeIn(tween(140)) togetherWith fadeOut(tween(110))
-                    },
-                    label = "counterPillTransition"
-                ) { text ->
-                    Text(
-                        text = text,
-                        fontFamily = FontFamily.Monospace,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
-                    )
-                }
+        Column {
+            Text(
+                text = "Fototeca",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            if (subtitleText.isNotEmpty()) {
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
-        // Right controls: transition seamlessly into a compact floating frosted state when scrolled
         Row(
-            horizontalArrangement = Arrangement.spacedBy(filterClusterPadding),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .graphicsLayer {
-                    scaleX = controlsScale
-                    scaleY = controlsScale
-                }
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             LiquidGlassSurface(
                 shape = CircleShape,
-                cornerRadiusDp = 24.dp,
                 tintOverride = if (isCompactDensity) MaterialTheme.colorScheme.primary else null,
                 onClick = onToggleDensity,
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(40.dp)
                     .testTag("grid_density_fab")
             ) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    AnimatedContent(
-                        targetState = isCompactDensity,
-                        transitionSpec = {
-                            (fadeIn(tween(150)) + scaleIn(
-                                initialScale = 0.78f,
-                                animationSpec = spring(dampingRatio = 0.80f, stiffness = 500f)
-                            )) togetherWith (fadeOut(tween(100)) + scaleOut(targetScale = 0.78f))
-                        },
-                        label = "densityFabIconTransition"
-                    ) { compact ->
-                        Icon(
-                            imageVector = if (compact) Icons.Rounded.GridView else Icons.Rounded.ViewComfy,
-                            contentDescription = stringResource(
-                                if (compact) {
-                                    R.string.grid_density_toggle_comfortable
-                                } else {
-                                    R.string.grid_density_toggle_compact
-                                }
-                            ),
-                            tint = if (compact) {
-                                MaterialTheme.colorScheme.primary
+                    Icon(
+                        imageVector = if (isCompactDensity) Icons.Rounded.GridView else Icons.Rounded.ViewComfy,
+                        contentDescription = stringResource(
+                            if (isCompactDensity) {
+                                R.string.grid_density_toggle_comfortable
                             } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+                                R.string.grid_density_toggle_compact
+                            }
+                        ),
+                        tint = if (isCompactDensity) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
             }
 
             LiquidGlassSurface(
                 shape = CircleShape,
-                cornerRadiusDp = 24.dp,
-                tintOverride = if (rawFilterActive) MaterialTheme.colorScheme.primary else null,
+                tintOverride = if (isFiltered) MaterialTheme.colorScheme.primary else null,
                 onClick = onFilterIconClick,
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(40.dp)
                     .testTag("raw_filter_button")
             ) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = Icons.Rounded.Tune,
+                        imageVector = Icons.Rounded.MoreHoriz,
                         contentDescription = stringResource(R.string.filter_menu_description),
-                        tint = if (rawFilterActive) {
+                        tint = if (isFiltered) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurface
                         },
                         modifier = Modifier.size(20.dp)
                     )
-                    if (rawFilterActive) {
+                    if (isFiltered) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(10.dp)
-                                .size(7.dp)
+                                .padding(8.dp)
+                                .size(6.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.primary)
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FloatingCategoryPill(
+    selectedCategory: MediaCategoryTab?,
+    onSelectCategory: (MediaCategoryTab) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val prismColors = LocalPrismColors.current
+    val activeChipBg = if (prismColors.isDarkSurface) {
+        Color.White.copy(alpha = 0.16f)
+    } else {
+        Color.Black.copy(alpha = 0.08f)
+    }
+
+    LiquidGlassSurface(
+        shape = CircleShape,
+        contentPadding = 4.dp,
+        modifier = modifier.height(40.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            MediaCategoryTab.entries.forEach { tab ->
+                val isSelected = selectedCategory == tab
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (isSelected) activeChipBg else Color.Transparent)
+                        .clickable { onSelectCategory(tab) }
+                        .padding(horizontal = 13.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = tab.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        maxLines = 1
+                    )
                 }
             }
         }
@@ -588,13 +570,13 @@ private fun FilterPopoverItem(
             .clip(RoundedCornerShape(14.dp))
             .background(
                 if (selected) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                 } else {
                     Color.Transparent
                 }
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 11.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
             .testTag(testTag),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
@@ -623,7 +605,6 @@ private fun FilterPopoverItem(
 private fun PartialAccessBanner(onManage: () -> Unit) {
     LiquidGlassSurface(
         shape = RoundedCornerShape(18.dp),
-        cornerRadiusDp = 18.dp,
         onClick = onManage,
         modifier = Modifier
             .fillMaxWidth()
@@ -663,53 +644,22 @@ private fun PinchablePhotoGrid(
     onGridColumnsChanged: (Int) -> Unit,
     onPhotoClick: (Long) -> Unit
 ) {
-    val prismColors = LocalPrismColors.current
     var currentColumnsState by remember { mutableStateOf(gridColumns) }
     LaunchedEffect(gridColumns) {
         currentColumnsState = gridColumns
-    }
-
-    val targetSpacing = when {
-        gridColumns <= 3 -> 8.dp
-        gridColumns == 4 -> 5.dp
-        else -> 3.dp
-    }
-    val targetCornerRadius = when {
-        gridColumns <= 3 -> 16.dp
-        gridColumns == 4 -> 12.dp
-        else -> 8.dp
-    }
-    val animatedSpacing by animateDpAsState(
-        targetValue = targetSpacing,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
-        label = "gridSpacingAnim"
-    )
-    val animatedCornerRadius by animateDpAsState(
-        targetValue = targetCornerRadius,
-        animationSpec = spring(dampingRatio = 0.84f, stiffness = 420f),
-        label = "gridCornerAnim"
-    )
-    val borderBrush = remember(prismColors.glassBorderStart, prismColors.glassBorderEnd) {
-        Brush.linearGradient(
-            colors = listOf(
-                prismColors.glassBorderStart.copy(alpha = 0.42f),
-                Color.Transparent,
-                prismColors.glassBorderEnd.copy(alpha = 0.30f)
-            )
-        )
     }
 
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Fixed(gridColumns),
         contentPadding = PaddingValues(
-            start = 10.dp,
-            end = 10.dp,
+            start = 0.dp,
+            end = 0.dp,
             top = topInsetPadding,
             bottom = bottomInsetPadding
         ),
-        horizontalArrangement = Arrangement.spacedBy(animatedSpacing),
-        verticalArrangement = Arrangement.spacedBy(animatedSpacing),
+        horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+        verticalArrangement = Arrangement.spacedBy(1.5.dp),
         modifier = Modifier
             .fillMaxSize()
             .testTag("photo_grid")
@@ -752,21 +702,12 @@ private fun PinchablePhotoGrid(
     ) {
         items(
             items = photos,
-            key = { it.id }
+            key = { it.id },
+            contentType = { "photo_tile" }
         ) { photo ->
             PhotoGridTile(
                 photo = photo,
-                cornerRadius = animatedCornerRadius,
-                borderBrush = borderBrush,
-                onClick = { onPhotoClick(photo.id) },
-                modifier = Modifier.animateItem(
-                    fadeInSpec = tween(160),
-                    fadeOutSpec = tween(120),
-                    placementSpec = spring<IntOffset>(
-                        dampingRatio = 0.84f,
-                        stiffness = 420f
-                    )
-                )
+                onClick = { onPhotoClick(photo.id) }
             )
         }
     }
@@ -775,31 +716,21 @@ private fun PinchablePhotoGrid(
 @Composable
 private fun PhotoGridTile(
     photo: PhotoItem,
-    cornerRadius: Dp,
-    borderBrush: Brush,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
     val context = LocalContext.current
     val prismColors = LocalPrismColors.current
-    val tileShape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
-    val imageRequest = remember(photo.id, photo.uri) {
+    val imageRequest = remember(photo.id) {
         ImageRequest.Builder(context)
             .data(photo.uri)
-            .crossfade(80)
+            .size(260)
             .build()
     }
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .aspectRatio(1f)
-            .clip(tileShape)
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-            .border(
-                width = 0.75.dp,
-                brush = borderBrush,
-                shape = tileShape
-            )
             .clickable(onClick = onClick)
             .testTag("photo_tile_${photo.id}")
     ) {
@@ -813,16 +744,17 @@ private fun PhotoGridTile(
         if (photo.isRaw) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .clip(RoundedCornerShape(6.dp))
+                    .align(Alignment.TopStart)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(4.dp))
                     .background(prismColors.rawBadgeContainer)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
             ) {
                 Text(
                     text = "RAW",
                     fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
                     color = prismColors.rawBadgeContent
                 )
             }
@@ -832,18 +764,18 @@ private fun PhotoGridTile(
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(6.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(6.dp))
                     .background(Color.Black.copy(alpha = 0.62f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.PlayArrow,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(11.dp)
                 )
                 Text(
                     text = formatDuration(photo.durationMs),
@@ -868,8 +800,7 @@ private fun PermissionRequestCard(
         contentAlignment = Alignment.Center
     ) {
         LiquidGlassSurface(
-            shape = RoundedCornerShape(28.dp),
-            cornerRadiusDp = 28.dp,
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
@@ -937,8 +868,7 @@ private fun GalleryStatusCard(
         contentAlignment = Alignment.Center
     ) {
         LiquidGlassSurface(
-            shape = RoundedCornerShape(28.dp),
-            cornerRadiusDp = 28.dp,
+            shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(

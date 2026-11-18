@@ -1,13 +1,9 @@
 package com.charlenferreira.prism.ui.components
 
-import android.graphics.RenderEffect
-import android.graphics.Shader
-import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -18,7 +14,6 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -45,355 +40,165 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.charlenferreira.prism.R
+import com.charlenferreira.prism.data.repository.LiquidGlassConfig
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
-import kotlin.math.roundToInt
-
-private const val BACKDROP_DOWNSCALE = 0.25f
-private const val BACKDROP_INV_SCALE = 4f
-private const val BACKDROP_BLUR_RADIUS = 20f // 20f at 0.25x == ~80px smooth matte iOS frost
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 
 @Stable
 class PrismBackdropState(
-    val sourceLayer: GraphicsLayer,
-    val blurredLayer: GraphicsLayer
-) {
-    // Plain fields read only in Layout/Draw phases so scroll never triggers recomposition
-    var sourceOffsetInRoot: Offset = Offset.Zero
-    var hasBlurredFrame: Boolean = false
-    var invalidationSignal: () -> Int = { 0 }
-}
+    val layerBackdrop: LayerBackdrop
+)
 
 val LocalPrismBackdrop = compositionLocalOf<PrismBackdropState?> { null }
+val LocalLiquidGlassConfig = compositionLocalOf { LiquidGlassConfig() }
 
 @Composable
-fun rememberPrismBackdropState(
-    invalidationSignal: () -> Int = { 0 }
-): PrismBackdropState {
-    val sourceLayer = rememberGraphicsLayer()
-    val blurredLayer = rememberGraphicsLayer()
-    val state = remember(sourceLayer, blurredLayer) {
-        PrismBackdropState(
-            sourceLayer = sourceLayer,
-            blurredLayer = blurredLayer
-        )
-    }
-    state.invalidationSignal = invalidationSignal
-    return state
+fun rememberPrismBackdropState(): PrismBackdropState {
+    val backdrop = rememberLayerBackdrop()
+    return remember(backdrop) { PrismBackdropState(backdrop) }
 }
 
-/**
- * Captures the backdrop content once per frame into a 0.25x downsampled GPU-blurred layer
- * so sibling frosted glass pills & scrims render real blurred backgrounds at 120fps.
- */
-fun Modifier.prismBackdropSource(
-    state: PrismBackdropState,
-    blurRadius: Float = BACKDROP_BLUR_RADIUS
-): Modifier {
-    val cachedBlurEffect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        RenderEffect.createBlurEffect(
-            blurRadius,
-            blurRadius,
-            Shader.TileMode.CLAMP
-        ).asComposeRenderEffect()
+fun Modifier.prismBackdropSource(state: PrismBackdropState?): Modifier {
+    return if (state != null) {
+        this.layerBackdrop(state.layerBackdrop)
     } else {
-        null
+        this
     }
-
-    return this
-        .onGloballyPositioned { coords ->
-            state.sourceOffsetInRoot = coords.positionInRoot()
-        }
-        .drawWithContent {
-            // Subscribe draw phase only to scroll/page updates without recomposing
-            state.invalidationSignal()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                size.width >= 8f &&
-                size.height >= 8f
-            ) {
-                state.sourceLayer.record {
-                    this@drawWithContent.drawContent()
-                }
-                drawLayer(state.sourceLayer)
-
-                val downW = (size.width * BACKDROP_DOWNSCALE).roundToInt().coerceAtLeast(1)
-                val downH = (size.height * BACKDROP_DOWNSCALE).roundToInt().coerceAtLeast(1)
-                state.blurredLayer.renderEffect = cachedBlurEffect
-                state.blurredLayer.record(size = IntSize(downW, downH)) {
-                    scale(
-                        scaleX = BACKDROP_DOWNSCALE,
-                        scaleY = BACKDROP_DOWNSCALE,
-                        pivot = Offset.Zero
-                    ) {
-                        drawLayer(state.sourceLayer)
-                    }
-                }
-                state.hasBlurredFrame = true
-            } else {
-                drawContent()
-            }
-        }
 }
 
-/**
- * Progressive top scrim combining real downsampled backdrop blur masked smoothly to 0%
- * at the bottom edge with a black-to-transparent vertical gradient.
- */
 @Composable
 fun ProgressiveTopBlurScrim(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    height: Dp = 112.dp
 ) {
-    val backdropState = LocalPrismBackdrop.current
-    val posHolder = remember { PositionHolder() }
+    val extendedColors = LocalPrismColors.current
+    val topColor = extendedColors.backgroundTop.copy(alpha = 0.88f)
+    val midColor = extendedColors.backgroundTop.copy(alpha = 0.42f)
 
-    Box(modifier = modifier) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && backdropState != null) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .onGloballyPositioned { coords ->
-                        posHolder.offsetInRoot = coords.positionInRoot()
-                    }
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                    }
-                    .drawWithCache {
-                        val maskBrush = Brush.verticalGradient(
-                            0.0f to Color.Black,
-                            0.46f to Color.Black.copy(alpha = 0.78f),
-                            0.80f to Color.Black.copy(alpha = 0.25f),
-                            1.0f to Color.Transparent
-                        )
-                        onDrawBehind {
-                            backdropState.invalidationSignal()
-                            if (backdropState.hasBlurredFrame) {
-                                val dx = posHolder.offsetInRoot.x - backdropState.sourceOffsetInRoot.x
-                                val dy = posHolder.offsetInRoot.y - backdropState.sourceOffsetInRoot.y
-                                clipRect {
-                                    translate(left = -dx, top = -dy) {
-                                        scale(
-                                            scaleX = BACKDROP_INV_SCALE,
-                                            scaleY = BACKDROP_INV_SCALE,
-                                            pivot = Offset.Zero
-                                        ) {
-                                            drawLayer(backdropState.blurredLayer)
-                                        }
-                                    }
-                                }
-                                drawRect(
-                                    brush = maskBrush,
-                                    blendMode = BlendMode.DstIn
-                                )
-                            }
-                        }
-                    }
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .drawWithCache {
-                    val scrimBrush = Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.56f),
-                        0.50f to Color.Black.copy(alpha = 0.20f),
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .drawBehind {
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0.0f to topColor,
+                        0.55f to midColor,
                         1.0f to Color.Transparent
                     )
-                    onDrawBehind {
-                        drawRect(brush = scrimBrush)
-                    }
-                }
-        )
-    }
+                )
+            }
+    )
 }
 
-private class PositionHolder {
-    var offsetInRoot: Offset = Offset.Zero
-}
-
-/**
- * High-performance frosted matte Liquid Glass surface (iPhone-inspired).
- * Uses zero Modifier.composed, caches brushes, and samples a shared 0.25x blurred backdrop layer.
- */
 @Composable
 fun LiquidGlassSurface(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(24.dp),
-    cornerRadiusDp: Dp = 24.dp,
-    @Suppress("UNUSED_PARAMETER") blurRadius: Float = 24f,
-    tintOverride: Color? = null,
-    darkFrostedOverride: Boolean = false,
-    onClick: (() -> Unit)? = null,
+    config: LiquidGlassConfig = LocalLiquidGlassConfig.current,
+    contentPadding: Dp = 0.dp,
     content: @Composable BoxScope.() -> Unit
 ) {
-    val prismColors = LocalPrismColors.current
+    val extendedColors = LocalPrismColors.current
     val backdropState = LocalPrismBackdrop.current
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val posHolder = remember { PositionHolder() }
 
-    val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.945f else 1f,
-        animationSpec = spring(
-            dampingRatio = 0.78f,
-            stiffness = 580f
-        ),
-        label = "liquidGlassPressScale"
+    val tintColor = extendedColors.glassFillTop.copy(
+        alpha = config.tintAlpha.coerceIn(0.10f, 0.85f)
     )
 
-    val useDarkFrost = darkFrostedOverride || prismColors.isDarkSurface
-    val baseTop = if (darkFrostedOverride) Color(0xCC161A24) else prismColors.glassFillTop
-    val baseBottom = if (darkFrostedOverride) Color(0xBA0E1018) else prismColors.glassFillBottom
-
-    val targetTopColor = if (tintOverride != null) {
-        if (darkFrostedOverride) {
-            tintOverride.copy(alpha = 0.80f)
-        } else {
-            tintOverride.copy(alpha = if (useDarkFrost) 0.24f else 0.16f).compositeOver(baseTop)
-        }
-    } else {
-        baseTop
-    }
-
-    val targetBottomColor = if (tintOverride != null) {
-        if (darkFrostedOverride) {
-            tintOverride.copy(alpha = 0.72f)
-        } else {
-            tintOverride.copy(alpha = if (useDarkFrost) 0.18f else 0.12f).compositeOver(baseBottom)
-        }
-    } else {
-        baseBottom
-    }
-
-    val topColor by animateColorAsState(
-        targetValue = targetTopColor,
-        animationSpec = tween(160),
-        label = "liquidGlassTopTint"
-    )
-    val bottomColor by animateColorAsState(
-        targetValue = targetBottomColor,
-        animationSpec = tween(160),
-        label = "liquidGlassBottomTint"
-    )
-
-    val specularBrush = remember(
-        darkFrostedOverride,
-        prismColors.glassBorderStart,
-        prismColors.glassBorderMid,
-        prismColors.glassBorderEnd
-    ) {
-        if (darkFrostedOverride) {
+    val borderBrush = remember(extendedColors, config.rimLightAlpha, config.prismEdge) {
+        val rim = config.rimLightAlpha.coerceIn(0.1f, 1.0f)
+        if (config.prismEdge) {
             Brush.linearGradient(
                 colors = listOf(
-                    Color.White.copy(alpha = 0.34f),
-                    Color.White.copy(alpha = 0.10f),
-                    Color.White.copy(alpha = 0.18f)
+                    Color(0xFF7DD3FC).copy(alpha = 0.65f * rim),
+                    Color(0xFFF472B6).copy(alpha = 0.45f * rim),
+                    Color(0xFFFDE047).copy(alpha = 0.45f * rim),
+                    extendedColors.glassBorderEnd.copy(alpha = 0.60f * rim)
                 ),
                 start = Offset.Zero,
-                end = Offset(520f, 520f)
+                end = Offset(600f, 600f)
             )
         } else {
             Brush.linearGradient(
                 colors = listOf(
-                    prismColors.glassBorderStart,
-                    prismColors.glassBorderMid,
-                    prismColors.glassBorderEnd
+                    extendedColors.glassBorderStart.copy(alpha = rim),
+                    extendedColors.glassBorderMid.copy(alpha = rim),
+                    extendedColors.glassBorderEnd.copy(alpha = rim)
                 ),
                 start = Offset.Zero,
-                end = Offset(520f, 520f)
+                end = Offset(400f, 400f)
             )
         }
     }
 
-    val clickModifier = if (onClick != null) {
-        Modifier.clickable(
-            interactionSource = interactionSource,
-            indication = null,
-            role = Role.Button,
-            onClick = onClick
+    val shadowModifier = if (config.depthShadow) {
+        Modifier.shadow(
+            elevation = 10.dp,
+            shape = shape,
+            ambientColor = Color.Black.copy(alpha = 0.14f),
+            spotColor = Color.Black.copy(alpha = 0.22f)
         )
     } else {
         Modifier
     }
 
-    val satinHighlightAlpha = if (useDarkFrost) 0.065f else 0.22f
+    val glassModifier = if (backdropState != null) {
+        Modifier.drawBackdrop(
+            backdrop = backdropState.layerBackdrop,
+            shape = { shape },
+            effects = {
+                vibrancy()
+                blur(config.frostDp.dp.toPx())
+                lens(
+                    refractionHeight = config.lensDepthDp.dp.toPx(),
+                    refractionAmount = config.lensStrengthDp.dp.toPx(),
+                    chromaticAberration = config.prismEdge
+                )
+            },
+            onDrawSurface = {
+                drawRect(tintColor)
+            }
+        )
+    } else {
+        Modifier.drawBehind {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        extendedColors.glassFillTop,
+                        extendedColors.glassFillBottom
+                    )
+                )
+            )
+        }
+    }
 
     Box(
         modifier = modifier
-            .then(clickModifier)
-            .graphicsLayer {
-                scaleX = pressScale
-                scaleY = pressScale
-            }
-            .onGloballyPositioned { coords ->
-                posHolder.offsetInRoot = coords.positionInRoot()
-            }
+            .then(shadowModifier)
             .clip(shape)
-            .drawBehind {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    backdropState != null
-                ) {
-                    backdropState.invalidationSignal()
-                    if (backdropState.hasBlurredFrame) {
-                        val dx = posHolder.offsetInRoot.x - backdropState.sourceOffsetInRoot.x
-                        val dy = posHolder.offsetInRoot.y - backdropState.sourceOffsetInRoot.y
-                        clipRect {
-                            translate(left = -dx, top = -dy) {
-                                scale(
-                                    scaleX = BACKDROP_INV_SCALE,
-                                    scaleY = BACKDROP_INV_SCALE,
-                                    pivot = Offset.Zero
-                                ) {
-                                    drawLayer(backdropState.blurredLayer)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .drawWithCache {
-                val radiusPx = cornerRadiusDp.toPx().coerceAtMost(size.minDimension / 2f)
-                val corner = CornerRadius(radiusPx, radiusPx)
-                val fillBrush = Brush.verticalGradient(colors = listOf(topColor, bottomColor))
-                val satinBrush = Brush.verticalGradient(
-                    0.0f to Color.White.copy(alpha = satinHighlightAlpha),
-                    0.40f to Color.Transparent,
-                    1.0f to Color.Transparent
-                )
-                onDrawBehind {
-                    drawRoundRect(brush = fillBrush, cornerRadius = corner)
-                    drawRoundRect(brush = satinBrush, cornerRadius = corner)
-                }
-            }
-            .border(width = 0.9.dp, brush = specularBrush, shape = shape),
+            .then(glassModifier)
+            .border(width = 0.85.dp, brush = borderBrush, shape = shape)
+            .padding(contentPadding),
         content = content
     )
 }
@@ -401,183 +206,126 @@ fun LiquidGlassSurface(
 @Composable
 fun LiquidGlassBackground(
     modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(24.dp),
     content: @Composable BoxScope.() -> Unit
 ) {
-    val prismColors = LocalPrismColors.current
-    val bgTop by animateColorAsState(
-        targetValue = prismColors.backgroundTop,
-        animationSpec = tween(240),
-        label = "bgTop"
+    LiquidGlassSurface(
+        modifier = modifier,
+        shape = shape,
+        content = content
     )
-    val bgBottom by animateColorAsState(
-        targetValue = prismColors.backgroundBottom,
-        animationSpec = tween(240),
-        label = "bgBottom"
-    )
-    val orbPrimary by animateColorAsState(
-        targetValue = prismColors.ambientOrbPrimary,
-        animationSpec = tween(240),
-        label = "orbPrimary"
-    )
-    val orbSecondary by animateColorAsState(
-        targetValue = prismColors.ambientOrbSecondary,
-        animationSpec = tween(240),
-        label = "orbSecondary"
-    )
+}
 
-    Box(modifier = modifier) {
-        Canvas(modifier = Modifier.matchParentSize()) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(bgTop, bgBottom)
+@Composable
+fun LiquidGlassPillNavBar(
+    currentRoute: String,
+    onSelectRoute: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = 24.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        LiquidGlassSurface(
+            shape = CircleShape,
+            contentPadding = 6.dp
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PillNavItem(
+                    label = stringResource(R.string.nav_gallery),
+                    selected = currentRoute == "gallery",
+                    selectedIcon = Icons.Rounded.PhotoLibrary,
+                    unselectedIcon = Icons.Outlined.PhotoLibrary,
+                    testTag = "nav_gallery",
+                    onClick = { onSelectRoute("gallery") }
                 )
-            )
-            if (orbPrimary != Color.Transparent) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(orbPrimary, Color.Transparent),
-                        center = Offset(size.width * 0.15f, size.height * 0.10f),
-                        radius = size.width * 0.95f
-                    ),
-                    radius = size.width * 0.95f,
-                    center = Offset(size.width * 0.15f, size.height * 0.10f)
-                )
-            }
-            if (orbSecondary != Color.Transparent) {
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(orbSecondary, Color.Transparent),
-                        center = Offset(size.width * 0.88f, size.height * 0.84f),
-                        radius = size.width * 0.85f
-                    ),
-                    radius = size.width * 0.85f,
-                    center = Offset(size.width * 0.88f, size.height * 0.84f)
+                PillNavItem(
+                    label = stringResource(R.string.nav_settings),
+                    selected = currentRoute == "settings",
+                    selectedIcon = Icons.Rounded.Settings,
+                    unselectedIcon = Icons.Outlined.Settings,
+                    testTag = "nav_settings",
+                    onClick = { onSelectRoute("settings") }
                 )
             }
         }
-        content()
     }
 }
 
-/**
- * Detached frosted Liquid Glass bottom bar:
- * - Left: floating Album/Gallery pill capsule
- * - Right: standalone separate circular Settings button
- */
 @Composable
-fun LiquidGlassPillNavBar(
-    isGallerySelected: Boolean,
-    onGalleryClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    modifier: Modifier = Modifier
+private fun PillNavItem(
+    label: String,
+    selected: Boolean,
+    selectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    testTag: String,
+    onClick: () -> Unit
 ) {
-    val galleryLabel = stringResource(R.string.tab_gallery)
-    val settingsLabel = stringResource(R.string.tab_settings)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
 
-    val galleryScale by animateFloatAsState(
-        targetValue = if (isGallerySelected) 1f else 0.96f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 500f),
-        label = "galleryPillScale"
-    )
-    val settingsScale by animateFloatAsState(
-        targetValue = if (!isGallerySelected) 1.05f else 1f,
-        animationSpec = spring(dampingRatio = 0.80f, stiffness = 500f),
-        label = "settingsOrbScale"
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 500f),
+        label = "pill_scale"
     )
 
-    val galleryTint by animateColorAsState(
-        targetValue = if (isGallerySelected) {
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(220),
+        label = "pill_container"
+    )
+
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) {
             MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = tween(150),
-        label = "galleryTint"
-    )
-    val settingsTint by animateColorAsState(
-        targetValue = if (!isGallerySelected) {
-            MaterialTheme.colorScheme.primary
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        },
-        animationSpec = tween(150),
-        label = "settingsTint"
+        animationSpec = tween(220),
+        label = "pill_content"
     )
 
     Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(CircleShape)
+            .drawBehind { drawRect(containerColor) }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                role = Role.Tab,
+                onClick = onClick
+            )
+            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .testTag(testTag),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LiquidGlassSurface(
-            shape = CircleShape,
-            cornerRadiusDp = 30.dp,
-            tintOverride = if (isGallerySelected) MaterialTheme.colorScheme.primary else null,
-            onClick = onGalleryClick,
-            modifier = Modifier
-                .height(54.dp)
-                .graphicsLayer {
-                    scaleX = galleryScale
-                    scaleY = galleryScale
-                }
-                .testTag("nav_gallery_tab")
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                Icon(
-                    imageVector = if (isGallerySelected) {
-                        Icons.Rounded.PhotoLibrary
-                    } else {
-                        Icons.Outlined.PhotoLibrary
-                    },
-                    contentDescription = galleryLabel,
-                    tint = galleryTint,
-                    modifier = Modifier.size(21.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = galleryLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = galleryTint,
-                    maxLines = 1
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        LiquidGlassSurface(
-            shape = CircleShape,
-            cornerRadiusDp = 28.dp,
-            tintOverride = if (!isGallerySelected) MaterialTheme.colorScheme.primary else null,
-            onClick = onSettingsClick,
-            modifier = Modifier
-                .size(54.dp)
-                .graphicsLayer {
-                    scaleX = settingsScale
-                    scaleY = settingsScale
-                }
-                .testTag("nav_settings_tab")
-        ) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = if (!isGallerySelected) {
-                        Icons.Rounded.Settings
-                    } else {
-                        Icons.Outlined.Settings
-                    },
-                    contentDescription = settingsLabel,
-                    tint = settingsTint,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
+        Icon(
+            imageVector = if (selected) selectedIcon else unselectedIcon,
+            contentDescription = label,
+            tint = contentColor,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = contentColor
+        )
     }
 }

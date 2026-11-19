@@ -92,8 +92,6 @@ import com.charlenferreira.prism.ui.components.LiquidGlassSurface
 import com.charlenferreira.prism.ui.components.PrismBackdropState
 import com.charlenferreira.prism.ui.components.ProgressiveTopBlurScrim
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 
 private enum class MediaCategoryTab(val label: String) {
@@ -162,8 +160,9 @@ fun GalleryScreen(
             MediaCategoryTab.VIDEOS -> all.filter { it.isVideo }
             MediaCategoryTab.PHOTOS -> all.filter { !it.isVideo && !it.isRaw }
         }
+    }
 
-            val currentDateLabel by remember(filteredPhotos) {
+    val currentDateLabel by remember(filteredPhotos) {
         derivedStateOf {
             if (filteredPhotos.isEmpty()) "" else "Galeria"
         }
@@ -291,7 +290,6 @@ fun GalleryScreen(
             }
         }
 
-        // Fundo degradê superior suave
         ProgressiveTopBlurScrim(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -299,7 +297,6 @@ fun GalleryScreen(
                 .height(statusBarTopPadding + 108.dp)
         )
 
-        // Cabeçalho limpo sem botões laterais (colunas mudam apenas no gesto de pinça)
         XiaomiIosHybridHeader(
             displayedCount = filteredPhotos.size,
             dateLabel = currentDateLabel,
@@ -309,7 +306,6 @@ fun GalleryScreen(
                 .windowInsetsPadding(WindowInsets.statusBars)
         )
 
-        // Cápsula única de filtro embaixo ("Todas | RAW / DNG | Vídeos | Fotos")
         if (uiState is GalleryUiState.Success) {
             FloatingCategoryPill(
                 selectedCategory = selectedCategory,

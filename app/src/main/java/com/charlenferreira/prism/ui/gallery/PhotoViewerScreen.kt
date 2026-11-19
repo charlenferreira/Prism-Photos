@@ -10,10 +10,9 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -45,20 +44,21 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -79,9 +79,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -91,9 +93,9 @@ import coil3.request.crossfade
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.data.model.PhotoItem
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
-import com.charlenferreira.prism.ui.components.LocalPrismBackdrop
-import com.charlenferreira.prism.ui.components.prismBackdropSource
-import com.charlenferreira.prism.ui.components.rememberPrismBackdropState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -129,100 +131,94 @@ fun PhotoViewerScreen(
     var showExifSheet by remember { mutableStateOf(false) }
     var showEditAppDialog by remember { mutableStateOf(false) }
     var isCurrentPageZoomed by remember { mutableStateOf(false) }
-    var viewerBackdropTick by remember { mutableIntStateOf(0) }
-    val viewerBackdropState = rememberPrismBackdropState { viewerBackdropTick }
 
     val exifMetadata by viewModel.selectedExif.collectAsStateWithLifecycle()
     val isLoadingExif by viewModel.isLoadingExif.collectAsStateWithLifecycle()
 
     val currentPhoto = photos.getOrElse(pagerState.currentPage) { photos.first() }
 
-    LaunchedEffect(pagerState.currentPage, pagerState.currentPageOffsetFraction) {
-        viewerBackdropTick++
+    val headerDateLabel = remember(currentPhoto.id, currentPhoto.dateAddedSeconds) {
+        val millis = if (currentPhoto.dateAddedSeconds > 0L) {
+            currentPhoto.dateAddedSeconds * 1000L
+        } else {
+            System.currentTimeMillis()
+        }
+        val ptBr = Locale("pt", "BR")
+        val date = SimpleDateFormat("d 'de' MMM.", ptBr).format(Date(millis))
+        val time = SimpleDateFormat("HH:mm", ptBr).format(Date(millis))
+        "$date  •  $time"
     }
 
     LaunchedEffect(pagerState.currentPage) {
         isCurrentPageZoomed = false
     }
 
-    CompositionLocalProvider(LocalPrismBackdrop provides viewerBackdropState) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                userScrollEnabled = !isCurrentPageZoomed,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .prismBackdropSource(viewerBackdropState)
-            ) { pageIndex ->
-                val photo = photos[pageIndex]
-                ZoomablePhotoPage(
-                    photo = photo,
-                    onTap = { showChrome = !showChrome },
-                    onZoomStateChanged = { zoomed ->
-                        if (pageIndex == pagerState.currentPage) {
-                            isCurrentPageZoomed = zoomed
-                        }
-                    },
-                    onPlayVideo = { openExternalVideoPlayer(context, photo) }
-                )
-            }
-
-            // Top floating Liquid Glass bar (Close + filename/RAW badge)
-            val viewerSpringFloat = spring<Float>(dampingRatio = 0.84f, stiffness = 480f)
-            AnimatedVisibility(
-                visible = showChrome,
-                enter = fadeIn(viewerSpringFloat) + scaleIn(
-                    initialScale = 0.94f,
-                    animationSpec = viewerSpringFloat
-                ),
-                exit = fadeOut(viewerSpringFloat) + scaleOut(
-                    targetScale = 0.94f,
-                    animationSpec = viewerSpringFloat
-                ),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    LiquidGlassSurface(
-                        shape = CircleShape,
-                        cornerRadiusDp = 24.dp,
-                        darkFrostedOverride = true,
-                        onClick = onClose,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("viewer_close_button")
-                    ) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = stringResource(R.string.action_close),
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = !isCurrentPageZoomed,
+            modifier = Modifier.fillMaxSize()
+        ) { pageIndex ->
+            val photo = photos[pageIndex]
+            ZoomablePhotoPage(
+                photo = photo,
+                onTap = { showChrome = !showChrome },
+                onZoomStateChanged = { zoomed ->
+                    if (pageIndex == pagerState.currentPage) {
+                        isCurrentPageZoomed = zoomed
                     }
+                },
+                onPlayVideo = { openExternalVideoPlayer(context, photo) }
+            )
+        }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+        // Topo flutuante minimalista estilo Fototeca iOS (Voltar + Data/Hora & RAW)
+        AnimatedVisibility(
+            visible = showChrome,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(120)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    darkFrostedOverride = true,
+                    onClick = onClose,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .testTag("viewer_close_button")
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = stringResource(R.string.action_close),
+                            tint = Color.White,
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                }
 
-                    LiquidGlassSurface(
-                        shape = CircleShape,
-                        cornerRadiusDp = 24.dp,
-                        darkFrostedOverride = true,
-                        modifier = Modifier.weight(1f, fill = false)
-                    ) {
+                Spacer(modifier = Modifier.width(12.dp))
+
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    darkFrostedOverride = true,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -230,7 +226,7 @@ fun PhotoViewerScreen(
                             Box(
                                 modifier = Modifier
                                     .background(
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                                        color = MaterialTheme.colorScheme.primary,
                                         shape = RoundedCornerShape(6.dp)
                                     )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -238,15 +234,16 @@ fun PhotoViewerScreen(
                                 Text(
                                     text = "RAW",
                                     fontFamily = FontFamily.Monospace,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimary
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
                                 )
                             }
                         }
                         Text(
-                            text = currentPhoto.displayName,
-                            fontFamily = FontFamily.Monospace,
-                            style = MaterialTheme.typography.labelMedium,
+                            text = headerDateLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
                             color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -256,17 +253,11 @@ fun PhotoViewerScreen(
             }
         }
 
-        // Bottom floating Liquid Glass actions: EXIF + Edit
+        // Barra inferior estilo Fototeca iOS: Pílula de ações (Info + Editar) + Botão satélite Compartilhar
         AnimatedVisibility(
             visible = showChrome,
-            enter = fadeIn(viewerSpringFloat) + scaleIn(
-                initialScale = 0.94f,
-                animationSpec = viewerSpringFloat
-            ),
-            exit = fadeOut(viewerSpringFloat) + scaleOut(
-                targetScale = 0.94f,
-                animationSpec = viewerSpringFloat
-            ),
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(120)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .windowInsetsPadding(WindowInsets.navigationBars)
@@ -278,62 +269,89 @@ fun PhotoViewerScreen(
             ) {
                 LiquidGlassSurface(
                     shape = CircleShape,
-                    cornerRadiusDp = 28.dp,
-                    darkFrostedOverride = true,
-                    onClick = {
-                        viewModel.loadExif(currentPhoto)
-                        showExifSheet = true
-                    },
-                    modifier = Modifier.testTag("viewer_exif_button")
+                    darkFrostedOverride = true
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 13.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Info,
-                            contentDescription = stringResource(R.string.action_exif),
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = stringResource(R.string.action_exif),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = Color.White
-                        )
-                    }
-                }
-
-                if (!currentPhoto.isVideo) {
-                    LiquidGlassSurface(
-                        shape = CircleShape,
-                        cornerRadiusDp = 28.dp,
-                        darkFrostedOverride = true,
-                        onClick = { showEditAppDialog = true },
-                        modifier = Modifier.testTag("viewer_edit_button")
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 13.dp),
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .clickable {
+                                    viewModel.loadExif(currentPhoto)
+                                    showExifSheet = true
+                                }
+                                .padding(horizontal = 20.dp, vertical = 13.dp)
+                                .testTag("viewer_exif_button"),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Edit,
-                                contentDescription = stringResource(R.string.action_edit),
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = stringResource(R.string.action_exif),
                                 tint = Color.White,
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
-                                text = stringResource(R.string.action_edit),
+                                text = "Detalhes",
                                 style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
                                 color = Color.White
                             )
                         }
+
+                        if (!currentPhoto.isVideo) {
+                            VerticalDivider(
+                                modifier = Modifier.height(22.dp),
+                                thickness = 0.6.dp,
+                                color = Color.White.copy(alpha = 0.18f)
+                            )
+
+                            Row(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { showEditAppDialog = true }
+                                    .padding(horizontal = 20.dp, vertical = 13.dp)
+                                    .testTag("viewer_edit_button"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Edit,
+                                    contentDescription = stringResource(R.string.action_edit),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.action_edit),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Botão circular satélite estilo iOS Share
+                LiquidGlassSurface(
+                    shape = CircleShape,
+                    darkFrostedOverride = true,
+                    onClick = { shareMediaItem(context, currentPhoto) },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("viewer_share_button")
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Outlined.Share,
+                            contentDescription = "Compartilhar",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
-        }
         }
     }
 
@@ -380,8 +398,6 @@ private fun EditAppPickerDialog(
     Dialog(onDismissRequest = onDismiss) {
         LiquidGlassSurface(
             shape = RoundedCornerShape(28.dp),
-            cornerRadiusDp = 28.dp,
-            tintOverride = MaterialTheme.colorScheme.surface,
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("edit_app_picker_dialog")
@@ -389,7 +405,6 @@ private fun EditAppPickerDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
                     .padding(20.dp)
             ) {
                 Row(
@@ -400,6 +415,7 @@ private fun EditAppPickerDialog(
                     Text(
                         text = stringResource(R.string.edit_popup_title),
                         style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Icon(
@@ -638,7 +654,6 @@ private fun ZoomablePhotoPage(
         if (photo.isVideo) {
             LiquidGlassSurface(
                 shape = CircleShape,
-                cornerRadiusDp = 36.dp,
                 darkFrostedOverride = true,
                 onClick = onPlayVideo,
                 modifier = Modifier
@@ -655,6 +670,19 @@ private fun ZoomablePhotoPage(
                 }
             }
         }
+    }
+}
+
+private fun shareMediaItem(context: Context, photo: PhotoItem) {
+    val mime = photo.mimeType.ifBlank { if (photo.isVideo) "video/*" else "image/*" }
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = mime
+        putExtra(Intent.EXTRA_STREAM, photo.uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    try {
+        context.startActivity(Intent.createChooser(sendIntent, null))
+    } catch (_: ActivityNotFoundException) {
     }
 }
 

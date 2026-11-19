@@ -103,7 +103,8 @@ private data class EditorAppCandidate(
     val label: String,
     val packageName: String,
     val activityName: String,
-    val icon: ImageBitmap
+    val icon: ImageBitmap,
+    val supportsRaw: Boolean
 )
 
 @Composable
@@ -144,7 +145,7 @@ fun PhotoViewerScreen(
             System.currentTimeMillis()
         }
         val ptBr = Locale("pt", "BR")
-        val date = SimpleDateFormat("d 'de' MMM.", ptBr).format(Date(millis))
+        val date = SimpleDateFormat("d 'de' MMM", ptBr).format(Date(millis))
         val time = SimpleDateFormat("HH:mm", ptBr).format(Date(millis))
         "$date  •  $time"
     }
@@ -176,7 +177,7 @@ fun PhotoViewerScreen(
             )
         }
 
-        // Topo flutuante minimalista estilo Fototeca iOS (Voltar + Data/Hora & RAW)
+        // Topo flutuante minimalista estilo Fototeca iOS
         AnimatedVisibility(
             visible = showChrome,
             enter = fadeIn(tween(150)),
@@ -253,7 +254,7 @@ fun PhotoViewerScreen(
             }
         }
 
-        // Barra inferior estilo Fototeca iOS: Pílula de ações (Info + Editar) + Botão satélite Compartilhar
+        // Barra inferior estilo Fototeca iOS
         AnimatedVisibility(
             visible = showChrome,
             enter = fadeIn(tween(150)),
@@ -333,7 +334,6 @@ fun PhotoViewerScreen(
                     }
                 }
 
-                // Botão circular satélite estilo iOS Share
                 LiquidGlassSurface(
                     shape = CircleShape,
                     darkFrostedOverride = true,
@@ -391,8 +391,35 @@ private fun EditAppPickerDialog(
     onOpenSystemChooser: () -> Unit
 ) {
     val context = LocalContext.current
-    val editorApps = remember(photo.id, photo.mimeType) {
-        queryInstalledImageEditors(context, photo)
+    var showAllEditorsEvenIfRaw by remember(photo.id) { mutableStateOf(false) }
+
+    val allInstalledEditors = remember(photo.id, photo.mimeType) {
+        queryAllInstalledImageEditors(context, photo)
+    }
+
+    val displayedEditors = remember(allInstalledEditors, photo.isRaw, showAllEditorsEvenIfRaw) {
+        if (photo.isRaw && !showAllEditorsEvenIfRaw) {
+            val rawCompatible = allInstalledEditors.filter { it.supportsRaw }
+            rawCompatible.ifEmpty { allInstalledEditors }
+        } else {
+            allInstalledEditors
+        }
+    }
+
+    val dialogTitle = if (photo.isRaw) {
+        "Selecionar editor compatível com RAW"
+    } else {
+        "Selecionar editor de foto"
+    }
+
+    val dialogSubtitle = if (photo.isRaw) {
+        if (allInstalledEditors.any { it.supportsRaw } && !showAllEditorsEvenIfRaw) {
+            "Exibindo apenas editores instalados compatíveis com arquivos RAW (.dng). Escolha um app para revelar esta foto:"
+        } else {
+            "Nenhum editor dedicado de DNG foi filtrado automaticamente. Escolha qual editor instalado deseja testar:"
+        }
+    } else {
+        "Identificamos os editores de imagem instalados no aparelho. Escolha onde deseja editar esta foto:"
     }
 
     Dialog(onDismissRequest = onDismiss) {
@@ -413,11 +440,13 @@ private fun EditAppPickerDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.edit_popup_title),
-                        style = MaterialTheme.typography.titleLarge,
+                        text = dialogTitle,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Icon(
                         imageVector = Icons.Rounded.Edit,
                         contentDescription = null,
@@ -429,14 +458,14 @@ private fun EditAppPickerDialog(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Text(
-                    text = stringResource(R.string.edit_popup_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = dialogSubtitle,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                if (editorApps.isEmpty()) {
+                if (displayedEditors.isEmpty()) {
                     Text(
                         text = stringResource(R.string.no_editor_available),
                         style = MaterialTheme.typography.bodyMedium,
@@ -448,10 +477,10 @@ private fun EditAppPickerDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 260.dp)
+                            .heightIn(max = 280.dp)
                     ) {
                         items(
-                            items = editorApps,
+                            items = displayedEditors,
                             key = { "${it.packageName}/${it.activityName}" }
                         ) { app ->
                             Row(
@@ -477,13 +506,24 @@ private fun EditAppPickerDialog(
                                             .clip(RoundedCornerShape(10.dp))
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
-                                    Text(
-                                        text = app.label,
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = app.label,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        if (app.supportsRaw) {
+                                            Text(
+                                                text = "Compatível com RAW / DNG",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
                                 }
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.OpenInNew,
@@ -496,7 +536,16 @@ private fun EditAppPickerDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (photo.isRaw && allInstalledEditors.size > displayedEditors.size) {
+                    TextButton(
+                        onClick = { showAllEditorsEvenIfRaw = true },
+                        modifier = Modifier.align(Alignment.Start)
+                    ) {
+                        Text(text = "Mostrar todos os editores (${allInstalledEditors.size})")
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -507,7 +556,7 @@ private fun EditAppPickerDialog(
                         onClick = onOpenSystemChooser,
                         modifier = Modifier.testTag("edit_popup_chooser_button")
                     ) {
-                        Text(text = stringResource(R.string.edit_popup_system_chooser))
+                        Text(text = "Seletor do Android")
                     }
                     Spacer(modifier = Modifier.width(6.dp))
                     TextButton(
@@ -686,41 +735,88 @@ private fun shareMediaItem(context: Context, photo: PhotoItem) {
     }
 }
 
-private fun queryInstalledImageEditors(
+private fun queryAllInstalledImageEditors(
     context: Context,
     photo: PhotoItem
 ): List<EditorAppCandidate> {
     val pm = context.packageManager
-    val mime = photo.mimeType.ifBlank { "image/*" }
-    val editIntent = Intent(Intent.ACTION_EDIT).apply {
-        setDataAndType(photo.uri, mime)
+
+    // 1. Consulta editores que declaram suporte explícito a DNG / RAW
+    val rawPackages = mutableSetOf<String>()
+    val rawMimes = listOf("image/x-adobe-dng", "image/dng", "image/raw")
+    for (rawMime in rawMimes) {
+        val rawIntent = Intent(Intent.ACTION_EDIT).apply {
+            setDataAndType(photo.uri, rawMime)
+        }
+        queryActivitiesCompat(pm, rawIntent).forEach { info ->
+            rawPackages.add(info.activityInfo.packageName)
+        }
     }
 
-    val resolved = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        pm.queryIntentActivities(
-            editIntent,
-            PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
-        )
+    // Pacotes conhecidos de revelação RAW/DNG no Android
+    val knownRawEditorPackages = setOf(
+        "com.niksoftware.snapseed",
+        "com.adobe.lrmobile",
+        "com.adobe.psmobile",
+        "com.tssystems.photomate3",
+        "com.tssystems.photomate2",
+        "com.t8rin.imagetoolbox",
+        "ru.tech.imageresizershrinker",
+        "com.lightricks.photoleap",
+        "com.vsco.cam"
+    )
+
+    // 2. Consulta todos os editores de imagem instalados no dispositivo
+    val generalEditIntent = Intent(Intent.ACTION_EDIT).apply {
+        setDataAndType(photo.uri, "image/*")
+    }
+    val specificMimeIntent = if (photo.mimeType.isNotBlank() && photo.mimeType != "image/*") {
+        Intent(Intent.ACTION_EDIT).apply {
+            setDataAndType(photo.uri, photo.mimeType)
+        }
     } else {
-        @Suppress("DEPRECATION")
-        pm.queryIntentActivities(editIntent, PackageManager.MATCH_DEFAULT_ONLY)
+        null
     }
 
-    return resolved
+    val combinedResolved = buildList {
+        addAll(queryActivitiesCompat(pm, generalEditIntent))
+        if (specificMimeIntent != null) {
+            addAll(queryActivitiesCompat(pm, specificMimeIntent))
+        }
+    }
+
+    return combinedResolved
         .filter { it.activityInfo.packageName != context.packageName }
         .distinctBy { "${it.activityInfo.packageName}/${it.activityInfo.name}" }
         .mapNotNull { info ->
             runCatching {
+                val pkg = info.activityInfo.packageName
                 val label = info.loadLabel(pm).toString()
                 val iconBitmap = info.loadIcon(pm).toBitmap(width = 96, height = 96).asImageBitmap()
+                val isRawCapable = pkg in rawPackages || pkg in knownRawEditorPackages
                 EditorAppCandidate(
                     label = label,
-                    packageName = info.activityInfo.packageName,
+                    packageName = pkg,
                     activityName = info.activityInfo.name,
-                    icon = iconBitmap
+                    icon = iconBitmap,
+                    supportsRaw = isRawCapable
                 )
             }.getOrNull()
         }
+        .sortedByDescending { it.supportsRaw }
+}
+
+private fun queryActivitiesCompat(
+    pm: PackageManager,
+    intent: Intent
+) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    pm.queryIntentActivities(
+        intent,
+        PackageManager.ResolveInfoFlags.of(PackageManager.MATCH_DEFAULT_ONLY.toLong())
+    )
+} else {
+    @Suppress("DEPRECATION")
+    pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
 }
 
 private fun launchSpecificEditor(

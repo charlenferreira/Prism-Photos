@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.AlertDialog
@@ -55,7 +54,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.charlenferreira.prism.BuildConfig
 import com.charlenferreira.prism.R
-import com.charlenferreira.prism.data.repository.SettingsRepository
 import com.charlenferreira.prism.data.repository.UpdateInfo
 import com.charlenferreira.prism.ui.components.LiquidGlassSurface
 import com.charlenferreira.prism.ui.components.PrismBackdropState
@@ -69,7 +67,6 @@ fun SettingsScreen(
     @Suppress("UNUSED_PARAMETER") onScrollTick: () -> Unit = {}
 ) {
     val selectedTheme by viewModel.theme.collectAsStateWithLifecycle()
-    val gridColumns by viewModel.gridColumns.collectAsStateWithLifecycle()
     val updateInfo by viewModel.updateInfo.collectAsStateWithLifecycle()
     val isCheckingUpdate by viewModel.isCheckingUpdate.collectAsStateWithLifecycle()
     val statusMessage by viewModel.updateStatusMessage.collectAsStateWithLifecycle()
@@ -87,7 +84,7 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Seletor de Tema (Branco ou Preto)
+            // 1. Seletor de Tema (Branco ou Preto AMOLED)
             item(key = "section_themes") {
                 LiquidGlassSurface(
                     shape = RoundedCornerShape(22.dp),
@@ -120,55 +117,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Densidade da Grade (3 a 5 colunas)
-            item(key = "section_grid") {
-                LiquidGlassSurface(
-                    shape = RoundedCornerShape(22.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        SectionHeader(
-                            icon = Icons.Rounded.GridView,
-                            title = "Densidade da Fototeca",
-                            subtitle = "Colunas na grade principal ($gridColumns colunas)"
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            (SettingsRepository.MIN_COLUMNS..SettingsRepository.MAX_COLUMNS).forEach { cols ->
-                                val isSelected = gridColumns == cols
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(
-                                            if (isSelected) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
-                                        )
-                                        .clickable { viewModel.selectGridColumns(cols) }
-                                        .padding(vertical = 12.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "$cols colunas",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
-                                        else MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Atualizações do GitHub
+            // 2. Atualizações do GitHub
             item(key = "section_updates") {
                 LiquidGlassSurface(
                     shape = RoundedCornerShape(22.dp),
@@ -221,7 +170,7 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. Rodapé com Versão
+            // 3. Rodapé com Versão
             item(key = "footer_version") {
                 Column(
                     modifier = Modifier

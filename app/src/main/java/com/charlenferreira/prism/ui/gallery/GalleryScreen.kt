@@ -1,11 +1,13 @@
 package com.charlenferreira.prism.ui.gallery
 
 import android.Manifest
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,6 +36,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -57,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -92,13 +96,33 @@ import com.charlenferreira.prism.ui.components.LiquidGlassSurface
 import com.charlenferreira.prism.ui.components.PrismBackdropState
 import com.charlenferreira.prism.ui.components.ProgressiveTopBlurScrim
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private enum class MediaCategoryTab(val label: String) {
     ALL("Todas"),
     RAW_DNG("RAW / DNG"),
     VIDEOS("Vídeos"),
     PHOTOS("Fotos")
+}
+
+private sealed interface GalleryGridEntry {
+    val key: String
+
+    data class DayHeader(
+        override val key: String,
+        val title: String
+    ) : GalleryGridEntry
+
+    data class PhotoEntry(
+        override val key: String,
+        val photo: PhotoItem,
+        val dayTitle: String
+    ) : GalleryGridEntry
 }
 
 @Composable
@@ -162,9 +186,24 @@ fun GalleryScreen(
         }
     }
 
-    val currentDateLabel by remember(filteredPhotos) {
+    // Constrói os grupos por dia ("17 de novembro", e com ano apenas para anos anteriores)
+    val gridEntries by produceState<List<GalleryGridEntry>>(
+        initialValue = emptyList(),
+        key1 = filteredPhotos
+    ) {
+        value = withContext(Dispatchers.IO) {
+            buildDayGroupedEntries(context, filteredPhotos)
+        }
+    }
+
+    val currentDateLabel by remember(gridEntries) {
         derivedStateOf {
-            if (filteredPhotos.isEmpty()) "" else "Galeria"
+            val idx = gridState.firstVisibleItemIndex.coerceIn(0, (gridEntries.size - 1).coerceAtLeast(0))
+            when (val entry = gridEntries.getOrNull(idx)) {
+                is GalleryGridEntry.DayHeader -> entry.title
+                is GalleryGridEntry.PhotoEntry -> entry.dayTitle
+                null -> ""
+            }
         }
     }
 
@@ -247,7 +286,7 @@ fun GalleryScreen(
             }
 
             is GalleryUiState.Success -> {
-                val topPadding = statusBarTopPadding + if (state.isPartialAccess) 142.dp else 98.dp
+                val topPadding = statusBarTopPadding + if (state.isPartialAccess) 142.dp else 94.dp
                 val bottomPadding = navBarBottomPadding + 126.dp
 
                 if (filteredPhotos.isEmpty()) {
@@ -263,7 +302,7 @@ fun GalleryScreen(
                     )
                 } else {
                     PinchablePhotoGrid(
-                        photos = filteredPhotos,
+                        entries = gridEntries,
                         gridState = gridState,
                         gridColumns = gridColumns,
                         topInsetPadding = topPadding,
@@ -282,7 +321,7 @@ fun GalleryScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = statusBarTopPadding + 94.dp)
+                    .padding(top = statusBarTopPadding + 90.dp)
             ) {
                 PartialAccessBanner(
                     onManage = { permissionLauncher.launch(requiredMediaPermissions()) }
@@ -294,7 +333,7 @@ fun GalleryScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .height(statusBarTopPadding + 108.dp)
+                .height(statusBarTopPadding + 104.dp)
         )
 
         XiaomiIosHybridHeader(
@@ -322,6 +361,95 @@ fun GalleryScreen(
             )
         }
     }
+}
+
+private fun buildDayGroupedEntries(
+    context: Context,
+    photos: List<PhotoItem>
+): List<GalleryGridEntry> {
+    if (photos.isEmpty()) return emptyList()
+
+    // Consulta rápida de timestamps no MediaStore (DATE_TAKEN / DATE_MODIFIED)
+    val timestampById = HashMap<Long, Long>(photos.size)
+    val projection = arrayOf(
+        MediaStore.Files.FileColumns._ID,
+        MediaStore.MediaColumns.DATE_TAKEN,
+        MediaStore.MediaColumns.DATE_MODIFIED
+    )
+    val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (?, ?)"
+    val selectionArgs = arrayOf(
+        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
+        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
+    )
+
+    try {
+        context.contentResolver.query(
+            MediaStore.Files.getContentUri("external"),
+            projection,
+            selection,
+            selectionArgs,
+            null
+        )?.use { cursor ->
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
+            val takenCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
+            val modCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(idCol)
+                val taken = if (takenCol >= 0) cursor.getLong(takenCol) else 0L
+                val modifiedMs = if (modCol >= 0) cursor.getLong(modCol) * 1000L else 0L
+                val finalMillis = if (taken > 0L) taken else modifiedMs
+                if (finalMillis > 0L) {
+                    timestampById[id] = finalMillis
+                }
+            }
+        }
+    } catch (_: Exception) {
+    }
+
+    val ptBr = Locale("pt", "BR")
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val sameYearFmt = SimpleDateFormat("d 'de' MMMM", ptBr)
+    val otherYearFmt = SimpleDateFormat("d 'de' MMMM 'de' yyyy", ptBr)
+
+    val cal = Calendar.getInstance()
+    val result = ArrayList<GalleryGridEntry>(photos.size + 64)
+    var lastDayKey = ""
+    var lastDayTitle = ""
+
+    for (photo in photos) {
+        val millis = timestampById[photo.id] ?: System.currentTimeMillis()
+        cal.timeInMillis = millis
+        val year = cal.get(Calendar.YEAR)
+        val dayOfYear = cal.get(Calendar.DAY_OF_YEAR)
+        val dayKey = "$year-$dayOfYear"
+
+        if (dayKey != lastDayKey) {
+            val rawLabel = if (year == currentYear) {
+                sameYearFmt.format(Date(millis))
+            } else {
+                otherYearFmt.format(Date(millis))
+            }
+            lastDayTitle = rawLabel.lowercase(ptBr)
+            lastDayKey = dayKey
+            result.add(
+                GalleryGridEntry.DayHeader(
+                    key = "header_$dayKey",
+                    title = lastDayTitle
+                )
+            )
+        }
+
+        result.add(
+            GalleryGridEntry.PhotoEntry(
+                key = "photo_${photo.id}",
+                photo = photo,
+                dayTitle = lastDayTitle
+            )
+        )
+    }
+
+    return result
 }
 
 @Composable
@@ -445,7 +573,7 @@ private fun PartialAccessBanner(onManage: () -> Unit) {
 
 @Composable
 private fun PinchablePhotoGrid(
-    photos: List<PhotoItem>,
+    entries: List<GalleryGridEntry>,
     gridState: LazyGridState,
     gridColumns: Int,
     topInsetPadding: Dp,
@@ -510,15 +638,49 @@ private fun PinchablePhotoGrid(
             }
     ) {
         items(
-            items = photos,
-            key = { it.id },
-            contentType = { "photo_tile" }
-        ) { photo ->
-            PhotoGridTile(
-                photo = photo,
-                onClick = { onPhotoClick(photo.id) }
-            )
+            items = entries,
+            key = { it.key },
+            span = { entry ->
+                when (entry) {
+                    is GalleryGridEntry.DayHeader -> GridItemSpan(maxLineSpan)
+                    is GalleryGridEntry.PhotoEntry -> GridItemSpan(1)
+                }
+            },
+            contentType = { entry ->
+                when (entry) {
+                    is GalleryGridEntry.DayHeader -> "day_header"
+                    is GalleryGridEntry.PhotoEntry -> "photo_tile"
+                }
+            }
+        ) { entry ->
+            when (entry) {
+                is GalleryGridEntry.DayHeader -> {
+                    DaySectionHeader(title = entry.title)
+                }
+                is GalleryGridEntry.PhotoEntry -> {
+                    PhotoGridTile(
+                        photo = entry.photo,
+                        onClick = { onPhotoClick(entry.photo.id) }
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun DaySectionHeader(title: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
     }
 }
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
@@ -71,7 +72,7 @@ fun ExifBottomSheet(
             System.currentTimeMillis()
         }
         val ptBr = Locale("pt", "BR")
-        val dateStr = SimpleDateFormat("EEE., d 'de' MMM. 'de' yyyy", ptBr)
+        val dateStr = SimpleDateFormat("EEE., d 'de' MMM 'de' yyyy", ptBr)
             .format(Date(millis))
             .replaceFirstChar { it.uppercase() }
         val timeStr = SimpleDateFormat("HH:mm", ptBr).format(Date(millis))
@@ -99,7 +100,6 @@ fun ExifBottomSheet(
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp)
         ) {
-            // Cabeçalho estilo Fototeca iOS / Google Fotos: Data & Hora + Fechar circular
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -129,14 +129,17 @@ fun ExifBottomSheet(
                     shape = CircleShape,
                     onClick = onDismiss,
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(38.dp)
                         .testTag("exif_close_button")
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Rounded.Close,
                             contentDescription = stringResource(R.string.action_close),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = MaterialTheme.colorScheme.onSurface,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -159,13 +162,11 @@ fun ExifBottomSheet(
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Cartão principal da Câmera + Faixa horizontal EXIF (estilo Apple Photos)
                     LiquidGlassSurface(
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
-                            // Linha superior: Modelo e Lente
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -212,7 +213,6 @@ fun ExifBottomSheet(
 
                             HorizontalDivider(thickness = 0.6.dp, color = dividerColor)
 
-                            // Faixa horizontal compacta: Abertura | Obturador | Focal | ISO
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -258,7 +258,6 @@ fun ExifBottomSheet(
                         }
                     }
 
-                    // Cartão secundário: Arquivo, Resolução e Tamanho (estilo Google Fotos)
                     LiquidGlassSurface(
                         shape = RoundedCornerShape(20.dp),
                         modifier = Modifier.fillMaxWidth()

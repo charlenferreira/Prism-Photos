@@ -1,17 +1,18 @@
 package com.charlenferreira.prism.ui.gallery
 
 import android.Manifest
-import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -115,7 +116,8 @@ private sealed interface GalleryGridEntry {
 
     data class DayHeader(
         override val key: String,
-        val title: String
+        val title: String,
+        val itemCount: Int
     ) : GalleryGridEntry
 
     data class PhotoEntry(
@@ -186,13 +188,13 @@ fun GalleryScreen(
         }
     }
 
-    // Constrói os grupos por dia ("17 de novembro", e com ano apenas para anos anteriores)
+    // Agrupa por dias ("17 de novembro" no ano atual; com ano apenas para anos anteriores)
     val gridEntries by produceState<List<GalleryGridEntry>>(
         initialValue = emptyList(),
         key1 = filteredPhotos
     ) {
-        value = withContext(Dispatchers.IO) {
-            buildDayGroupedEntries(context, filteredPhotos)
+        value = withContext(Dispatchers.Default) {
+            buildDayGroupedEntries(filteredPhotos)
         }
     }
 
@@ -287,7 +289,7 @@ fun GalleryScreen(
 
             is GalleryUiState.Success -> {
                 val topPadding = statusBarTopPadding + if (state.isPartialAccess) 142.dp else 94.dp
-                val bottomPadding = navBarBottomPadding + 126.dp
+                val bottomPadding = navBarBottomPadding + 132.dp
 
                 if (filteredPhotos.isEmpty()) {
                     GalleryStatusCard(
@@ -336,9 +338,10 @@ fun GalleryScreen(
                 .height(statusBarTopPadding + 104.dp)
         )
 
-        XiaomiIosHybridHeader(
+        IosFototecaHeader(
             displayedCount = filteredPhotos.size,
             dateLabel = currentDateLabel,
+            selectedCategory = selectedCategory,
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
@@ -357,55 +360,16 @@ fun GalleryScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = 72.dp)
+                    .padding(bottom = 76.dp)
             )
         }
     }
 }
 
 private fun buildDayGroupedEntries(
-    context: Context,
     photos: List<PhotoItem>
 ): List<GalleryGridEntry> {
     if (photos.isEmpty()) return emptyList()
-
-    // Consulta rápida de timestamps no MediaStore (DATE_TAKEN / DATE_MODIFIED)
-    val timestampById = HashMap<Long, Long>(photos.size)
-    val projection = arrayOf(
-        MediaStore.Files.FileColumns._ID,
-        MediaStore.MediaColumns.DATE_TAKEN,
-        MediaStore.MediaColumns.DATE_MODIFIED
-    )
-    val selection = "${MediaStore.Files.FileColumns.MEDIA_TYPE} IN (?, ?)"
-    val selectionArgs = arrayOf(
-        MediaStore.Files.FileColumns.MEDIA_TYPE_IMAGE.toString(),
-        MediaStore.Files.FileColumns.MEDIA_TYPE_VIDEO.toString()
-    )
-
-    try {
-        context.contentResolver.query(
-            MediaStore.Files.getContentUri("external"),
-            projection,
-            selection,
-            selectionArgs,
-            null
-        )?.use { cursor ->
-            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Files.FileColumns._ID)
-            val takenCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_TAKEN)
-            val modCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
-
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idCol)
-                val taken = if (takenCol >= 0) cursor.getLong(takenCol) else 0L
-                val modifiedMs = if (modCol >= 0) cursor.getLong(modCol) * 1000L else 0L
-                val finalMillis = if (taken > 0L) taken else modifiedMs
-                if (finalMillis > 0L) {
-                    timestampById[id] = finalMillis
-                }
-            }
-        }
-    } catch (_: Exception) {
-    }
 
     val ptBr = Locale("pt", "BR")
     val currentYear = Calendar.getInstance().get(Calendar.YEAR)
@@ -413,12 +377,15 @@ private fun buildDayGroupedEntries(
     val otherYearFmt = SimpleDateFormat("d 'de' MMMM 'de' yyyy", ptBr)
 
     val cal = Calendar.getInstance()
-    val result = ArrayList<GalleryGridEntry>(photos.size + 64)
+    val groups = ArrayList<Pair<String, MutableList<PhotoItem>>>()
     var lastDayKey = ""
-    var lastDayTitle = ""
 
     for (photo in photos) {
-        val millis = timestampById[photo.id] ?: System.currentTimeMillis()
+        val millis = if (photo.dateAddedSeconds > 0L) {
+            photo.dateAddedSeconds * 1000L
+        } else {
+            System.currentTimeMillis()
+        }
         cal.timeInMillis = millis
         val year = cal.get(Calendar.YEAR)
         val dayOfYear = cal.get(Calendar.DAY_OF_YEAR)
@@ -430,58 +397,93 @@ private fun buildDayGroupedEntries(
             } else {
                 otherYearFmt.format(Date(millis))
             }
-            lastDayTitle = rawLabel.lowercase(ptBr)
+            groups.add(rawLabel.lowercase(ptBr) to mutableListOf(photo))
             lastDayKey = dayKey
+        } else {
+            groups.last().second.add(photo)
+        }
+    }
+
+    val result = ArrayList<GalleryGridEntry>(photos.size + groups.size)
+    groups.forEachIndexed { groupIdx, (title, dayPhotos) ->
+        result.add(
+            GalleryGridEntry.DayHeader(
+                key = "header_${groupIdx}_$title",
+                title = title,
+                itemCount = dayPhotos.size
+            )
+        )
+        for (photo in dayPhotos) {
             result.add(
-                GalleryGridEntry.DayHeader(
-                    key = "header_$dayKey",
-                    title = lastDayTitle
+                GalleryGridEntry.PhotoEntry(
+                    key = "photo_${photo.id}",
+                    photo = photo,
+                    dayTitle = title
                 )
             )
         }
-
-        result.add(
-            GalleryGridEntry.PhotoEntry(
-                key = "photo_${photo.id}",
-                photo = photo,
-                dayTitle = lastDayTitle
-            )
-        )
     }
 
     return result
 }
 
 @Composable
-private fun XiaomiIosHybridHeader(
+private fun IosFototecaHeader(
     displayedCount: Int,
     dateLabel: String,
+    selectedCategory: MediaCategoryTab,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier.padding(horizontal = 18.dp, vertical = 10.dp)
+    Row(
+        modifier = modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "Fotos",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Normal,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-
-        if (displayedCount > 0) {
-            val infoLine = buildString {
-                if (dateLabel.isNotEmpty()) {
-                    append(dateLabel)
-                    append("  |  ")
-                }
-                append("$displayedCount itens")
-            }
+        Column {
             Text(
-                text = infoLine,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp)
+                text = "Fototeca",
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-0.5).sp,
+                color = MaterialTheme.colorScheme.onBackground
             )
+
+            if (displayedCount > 0) {
+                val infoLine = buildString {
+                    if (dateLabel.isNotEmpty()) {
+                        append(dateLabel)
+                        append("  •  ")
+                    }
+                    append("$displayedCount itens")
+                }
+                Text(
+                    text = infoLine,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+
+        if (selectedCategory != MediaCategoryTab.ALL) {
+            LiquidGlassSurface(
+                shape = CircleShape,
+                tintOverride = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.height(32.dp)
+            ) {
+                Box(
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = selectedCategory.label,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
     }
 }
@@ -494,7 +496,12 @@ private fun FloatingCategoryPill(
 ) {
     val prismColors = LocalPrismColors.current
     val activeChipBg = if (prismColors.isDarkSurface) {
-        Color.White.copy(alpha = 0.16f)
+        Color.White.copy(alpha = 0.15f)
+    } else {
+        Color.White.copy(alpha = 0.94f)
+    }
+    val activeChipBorder = if (prismColors.isDarkSurface) {
+        Color.White.copy(alpha = 0.22f)
     } else {
         Color.Black.copy(alpha = 0.08f)
     }
@@ -502,7 +509,7 @@ private fun FloatingCategoryPill(
     LiquidGlassSurface(
         shape = CircleShape,
         contentPadding = 4.dp,
-        modifier = modifier.height(38.dp)
+        modifier = modifier.height(40.dp)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -510,26 +517,40 @@ private fun FloatingCategoryPill(
         ) {
             MediaCategoryTab.entries.forEach { tab ->
                 val isSelected = selectedCategory == tab
+                val labelColor by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    animationSpec = tween(130),
+                    label = "categoryChipText"
+                )
+
                 Box(
                     modifier = Modifier
                         .clip(CircleShape)
                         .background(if (isSelected) activeChipBg else Color.Transparent)
+                        .then(
+                            if (isSelected) {
+                                Modifier.border(0.6.dp, activeChipBorder, CircleShape)
+                            } else {
+                                Modifier
+                            }
+                        )
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) { onSelectCategory(tab) }
-                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                        .padding(horizontal = 13.dp, vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = tab.label,
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        letterSpacing = (-0.15).sp,
+                        color = labelColor,
                         maxLines = 1
                     )
                 }
@@ -541,7 +562,7 @@ private fun FloatingCategoryPill(
 @Composable
 private fun PartialAccessBanner(onManage: () -> Unit) {
     LiquidGlassSurface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         onClick = onManage,
         modifier = Modifier
             .fillMaxWidth()
@@ -565,6 +586,7 @@ private fun PartialAccessBanner(onManage: () -> Unit) {
             Text(
                 text = stringResource(R.string.partial_access_manage),
                 style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary
             )
         }
@@ -655,7 +677,10 @@ private fun PinchablePhotoGrid(
         ) { entry ->
             when (entry) {
                 is GalleryGridEntry.DayHeader -> {
-                    DaySectionHeader(title = entry.title)
+                    DaySectionHeader(
+                        title = entry.title,
+                        itemCount = entry.itemCount
+                    )
                 }
                 is GalleryGridEntry.PhotoEntry -> {
                     PhotoGridTile(
@@ -669,17 +694,30 @@ private fun PinchablePhotoGrid(
 }
 
 @Composable
-private fun DaySectionHeader(title: String) {
-    Box(
+private fun DaySectionHeader(
+    title: String,
+    itemCount: Int
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-0.25).sp,
             color = MaterialTheme.colorScheme.onBackground
+        )
+
+        Text(
+            text = if (itemCount == 1) "1 item" else "$itemCount itens",
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
@@ -726,8 +764,8 @@ private fun PhotoGridTile(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(4.dp)
-                    .background(prismColors.rawBadgeContainer, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                    .background(prismColors.rawBadgeContainer, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.5.dp)
             ) {
                 Text(
                     text = "RAW",
@@ -744,8 +782,8 @@ private fun PhotoGridTile(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(4.dp)
-                    .background(Color.Black.copy(alpha = 0.62f), RoundedCornerShape(5.dp))
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
+                    .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.5.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
@@ -759,6 +797,7 @@ private fun PhotoGridTile(
                     text = formatDuration(photo.durationMs),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
+                    fontWeight = FontWeight.Medium,
                     color = Color.White
                 )
             }
@@ -797,6 +836,7 @@ private fun PermissionRequestCard(
                 Text(
                     text = stringResource(R.string.permission_title),
                     style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
@@ -810,15 +850,20 @@ private fun PermissionRequestCard(
                 Spacer(modifier = Modifier.height(20.dp))
                 Button(
                     onClick = onRequestPermission,
+                    shape = CircleShape,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("grant_permission_button")
                 ) {
-                    Text(text = stringResource(R.string.permission_grant))
+                    Text(
+                        text = stringResource(R.string.permission_grant),
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onOpenSettings,
+                    shape = CircleShape,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("open_app_settings_button")
@@ -865,6 +910,7 @@ private fun GalleryStatusCard(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
@@ -878,6 +924,7 @@ private fun GalleryStatusCard(
                 Spacer(modifier = Modifier.height(18.dp))
                 Button(
                     onClick = onAction,
+                    shape = CircleShape,
                     modifier = Modifier.testTag("status_action_button")
                 ) {
                     Icon(
@@ -886,7 +933,10 @@ private fun GalleryStatusCard(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = actionLabel)
+                    Text(
+                        text = actionLabel,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }

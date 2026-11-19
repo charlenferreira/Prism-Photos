@@ -42,7 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -54,6 +53,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.charlenferreira.prism.R
 import com.charlenferreira.prism.data.repository.LiquidGlassConfig
 import com.charlenferreira.prism.ui.theme.LocalPrismColors
@@ -75,25 +75,19 @@ fun rememberPrismBackdropState(
     return state
 }
 
-/**
- * No-op leve: não captura camada offscreen nem roda shader na GPU.
- */
 fun Modifier.prismBackdropSource(
     @Suppress("UNUSED_PARAMETER") state: PrismBackdropState,
     @Suppress("UNUSED_PARAMETER") blurRadius: Float = 0f
 ): Modifier = this
 
-/**
- * Degradê superior suave estilo iOS Photos para legibilidade da barra de status.
- */
 @Composable
 fun ProgressiveTopBlurScrim(
     modifier: Modifier = Modifier,
     height: Dp = 104.dp
 ) {
     val prismColors = LocalPrismColors.current
-    val topColor = prismColors.backgroundTop.copy(alpha = 0.94f)
-    val midColor = prismColors.backgroundTop.copy(alpha = 0.55f)
+    val topColor = prismColors.backgroundTop.copy(alpha = 0.96f)
+    val midColor = prismColors.backgroundTop.copy(alpha = 0.68f)
 
     Box(
         modifier = modifier
@@ -102,7 +96,7 @@ fun ProgressiveTopBlurScrim(
             .drawWithCache {
                 val scrimBrush = Brush.verticalGradient(
                     0.0f to topColor,
-                    0.55f to midColor,
+                    0.58f to midColor,
                     1.0f to Color.Transparent
                 )
                 onDrawBehind {
@@ -113,8 +107,8 @@ fun ProgressiveTopBlurScrim(
 }
 
 /**
- * Superfície translúcida leve estilo Apple Photos (iOS 18/26).
- * Zero shaders AGSL / zero render offscreen -> 120fps cravados em qualquer GPU.
+ * Superfície acetinada estilo Apple Photos (iOS 18/26).
+ * Zero shaders pesados / zero alocação de shadow por frame -> 60fps constantes na Adreno 610.
  */
 @Composable
 fun LiquidGlassSurface(
@@ -135,31 +129,41 @@ fun LiquidGlassSurface(
     val isPressed by interactionSource.collectIsPressedAsState()
 
     val pressScale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 620f),
+        targetValue = if (isPressed) 0.965f else 1f,
+        animationSpec = spring(dampingRatio = 0.84f, stiffness = 620f),
         label = "iosSurfacePress"
     )
 
     val useDark = darkFrostedOverride || prismColors.isDarkSurface
 
     val baseSurfaceColor = when {
-        darkFrostedOverride -> Color(0xE61C1C1E)
-        useDark -> Color(0xEB18181B)
-        else -> prismColors.glassFillTop.copy(alpha = 0.92f)
+        darkFrostedOverride -> Color(0xF01C1C1E)
+        useDark -> Color(0xF21C1C1E)
+        else -> Color(0xF5F5F5F7)
     }
 
     val resolvedBgColor = remember(tintOverride, useDark, baseSurfaceColor) {
         if (tintOverride != null) {
-            tintOverride.copy(alpha = if (useDark) 0.22f else 0.12f).compositeOver(baseSurfaceColor)
+            tintOverride.copy(alpha = if (useDark) 0.20f else 0.11f).compositeOver(baseSurfaceColor)
         } else {
             baseSurfaceColor
         }
     }
 
-    val borderColor = if (useDark) {
-        Color.White.copy(alpha = 0.14f)
-    } else {
-        Color.Black.copy(alpha = 0.08f)
+    val rimBorderBrush = remember(useDark) {
+        if (useDark) {
+            Brush.verticalGradient(
+                0.0f to Color.White.copy(alpha = 0.22f),
+                0.5f to Color.White.copy(alpha = 0.10f),
+                1.0f to Color.White.copy(alpha = 0.14f)
+            )
+        } else {
+            Brush.verticalGradient(
+                0.0f to Color.White.copy(alpha = 0.90f),
+                0.5f to Color.Black.copy(alpha = 0.08f),
+                1.0f to Color.Black.copy(alpha = 0.12f)
+            )
+        }
     }
 
     val clickModifier = if (onClick != null) {
@@ -175,15 +179,9 @@ fun LiquidGlassSurface(
 
     Box(
         modifier = modifier
-            .shadow(
-                elevation = if (useDark) 4.dp else 6.dp,
-                shape = shape,
-                ambientColor = Color.Black.copy(alpha = 0.08f),
-                spotColor = Color.Black.copy(alpha = 0.12f)
-            )
             .clip(shape)
             .background(resolvedBgColor)
-            .border(width = 0.75.dp, color = borderColor, shape = shape)
+            .border(width = 0.8.dp, brush = rimBorderBrush, shape = shape)
             .then(clickModifier)
             .graphicsLayer {
                 if (pressScale != 1f) {
@@ -209,7 +207,8 @@ fun LiquidGlassBackground(
 }
 
 /**
- * Barra flutuante estilo Apple Photos (cápsula segmentada + botão circular satélite).
+ * Barra inferior flutuante em cápsula dupla inspirada na Fototeca do iPhone:
+ * Pílula principal à esquerda + botão circular satélite à direita.
  */
 @Composable
 fun LiquidGlassPillNavBar(
@@ -222,30 +221,30 @@ fun LiquidGlassPillNavBar(
     val settingsLabel = stringResource(R.string.tab_settings)
     val prismColors = LocalPrismColors.current
 
-    val activePillBg = if (prismColors.isDarkSurface) {
-        Color.White.copy(alpha = 0.14f)
+    val activeInnerPillColor = if (prismColors.isDarkSurface) {
+        Color.White.copy(alpha = 0.13f)
     } else {
-        Color.Black.copy(alpha = 0.07f)
+        Color.White.copy(alpha = 0.92f)
     }
 
-    val galleryColor by animateColorAsState(
+    val galleryTint by animateColorAsState(
         targetValue = if (isGallerySelected) {
             MaterialTheme.colorScheme.primary
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = tween(150),
-        label = "iosGalleryTabColor"
+        animationSpec = tween(140),
+        label = "iosGalleryTint"
     )
 
-    val settingsColor by animateColorAsState(
+    val settingsTint by animateColorAsState(
         targetValue = if (!isGallerySelected) {
             MaterialTheme.colorScheme.primary
         } else {
-            MaterialTheme.colorScheme.onSurfaceVariant
+            MaterialTheme.colorScheme.onSurface
         },
-        animationSpec = tween(150),
-        label = "iosSettingsTabColor"
+        animationSpec = tween(140),
+        label = "iosSettingsTint"
     )
 
     Row(
@@ -256,76 +255,67 @@ fun LiquidGlassPillNavBar(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Cápsula principal estilo Library | Collections da referência
+        // Cápsula principal da Fototeca (esquerda)
         LiquidGlassSurface(
             shape = CircleShape,
             contentPadding = 4.dp,
-            modifier = Modifier.height(56.dp)
+            onClick = onGalleryClick,
+            modifier = Modifier
+                .height(54.dp)
+                .testTag("nav_gallery_tab")
         ) {
             Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (isGallerySelected) activeInnerPillColor else Color.Transparent)
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.Center
             ) {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(if (isGallerySelected) activePillBg else Color.Transparent)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Tab,
-                            onClick = onGalleryClick
-                        )
-                        .padding(horizontal = 20.dp, vertical = 10.dp)
-                        .testTag("nav_gallery_tab"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (isGallerySelected) {
-                            Icons.Rounded.PhotoLibrary
-                        } else {
-                            Icons.Outlined.PhotoLibrary
-                        },
-                        contentDescription = galleryLabel,
-                        tint = galleryColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = galleryLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (isGallerySelected) FontWeight.Bold else FontWeight.Medium,
-                        color = galleryColor,
-                        maxLines = 1
-                    )
-                }
+                Icon(
+                    imageVector = if (isGallerySelected) {
+                        Icons.Rounded.PhotoLibrary
+                    } else {
+                        Icons.Outlined.PhotoLibrary
+                    },
+                    contentDescription = galleryLabel,
+                    tint = galleryTint,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = galleryLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (isGallerySelected) FontWeight.Bold else FontWeight.Medium,
+                    letterSpacing = (-0.2).sp,
+                    color = galleryTint,
+                    maxLines = 1
+                )
+            }
+        }
 
-                // Botão circular satélite integrado ou ao lado
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(if (!isGallerySelected) activePillBg else Color.Transparent)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Tab,
-                            onClick = onSettingsClick
-                        )
-                        .testTag("nav_settings_tab"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (!isGallerySelected) {
-                            Icons.Rounded.Settings
-                        } else {
-                            Icons.Outlined.Settings
-                        },
-                        contentDescription = settingsLabel,
-                        tint = settingsColor,
-                        modifier = Modifier.size(21.dp)
-                    )
-                }
+        Spacer(modifier = Modifier.width(12.dp))
+
+        // Botão circular satélite separado (direita — estilo lupa/ação do iOS Photos)
+        LiquidGlassSurface(
+            shape = CircleShape,
+            tintOverride = if (!isGallerySelected) MaterialTheme.colorScheme.primary else null,
+            onClick = onSettingsClick,
+            modifier = Modifier
+                .size(54.dp)
+                .testTag("nav_settings_tab")
+        ) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (!isGallerySelected) {
+                        Icons.Rounded.Settings
+                    } else {
+                        Icons.Outlined.Settings
+                    },
+                    contentDescription = settingsLabel,
+                    tint = settingsTint,
+                    modifier = Modifier.size(22.dp)
+                )
             }
         }
     }

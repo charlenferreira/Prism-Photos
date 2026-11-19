@@ -162,15 +162,10 @@ fun GalleryScreen(
             MediaCategoryTab.VIDEOS -> all.filter { it.isVideo }
             MediaCategoryTab.PHOTOS -> all.filter { !it.isVideo && !it.isRaw }
         }
-    }
 
-    val currentDateLabel by remember(filteredPhotos) {
+            val currentDateLabel by remember(filteredPhotos) {
         derivedStateOf {
-            val idx = gridState.firstVisibleItemIndex.coerceIn(0, (filteredPhotos.size - 1).coerceAtLeast(0))
-            val item = filteredPhotos.getOrNull(idx) ?: return@derivedStateOf ""
-            val millis = if (item.dateTakenMillis > 0L) item.dateTakenMillis else item.dateModifiedSeconds * 1000L
-            val formatter = SimpleDateFormat("dd 'de' MMM, yyyy", Locale("pt", "BR"))
-            formatter.format(Date(millis))
+            if (filteredPhotos.isEmpty()) "" else "Galeria"
         }
     }
 
